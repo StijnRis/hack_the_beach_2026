@@ -34,7 +34,7 @@ export async function runProductDetectionPipeline(
     // 1. Fetch raw predictions from Roboflow
     // Note: If processAndSplitImage originally relied on the local file, 
     // you may need to update its parameters to accept this buffer as well.
-    const predictions = await processAndSplitImage();
+    const predictions = await processAndSplitImage(imageBuffer);
 
     // 2. Concurrently crop and analyze each prediction snippet
     const analysisPromises = predictions.map(async (prediction) => {

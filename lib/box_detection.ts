@@ -25,10 +25,8 @@ export interface RoboflowResponse {
 /**
  * Core processor to handle Roboflow communication
  */
-export async function processAndSplitImage(): Promise<RoboflowPrediction[]> {
-    const filePath = path.join(process.cwd(), "public", "schap.jpeg");
-    const buffer = await fs.readFile(filePath);
-    const base64 = buffer.toString("base64");
+export async function processAndSplitImage(imageBuffer: Buffer): Promise<RoboflowPrediction[]> {
+    const base64 = imageBuffer.toString("base64");
 
     const apiKey = process.env.ROBOFLOW_API_KEY;
     if (!apiKey) {
