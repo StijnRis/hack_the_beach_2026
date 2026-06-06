@@ -5,7 +5,7 @@ import { identifyProductAndBarcode } from "../../../lib/product_detect";
 
 export async function GET() {
     // 1. Resolve the absolute path to your test image
-    const imagePath = path.join(process.cwd(), "test-product.jpg");
+    const imagePath = path.join(process.cwd(), "public/test-product.jpg");
 
     // 2. Read the file into a binary buffer asynchronously
     const imageBuffer = await fs.readFile(imagePath);
