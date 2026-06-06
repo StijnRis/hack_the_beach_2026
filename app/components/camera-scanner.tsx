@@ -89,9 +89,23 @@ function ToolButton({
 }
 
 function getEcoColor(score: number, mode: "border" | "bg") {
-  if (score >= 60) return mode === "border" ? "rgba(16, 185, 129, 0.85)" : "rgba(16, 185, 129, 0.15)";
-  if (score >= 30) return mode === "border" ? "rgba(245, 158, 11, 0.85)" : "rgba(245, 158, 11, 0.15)";
-  return mode === "border" ? "rgba(239, 68, 68, 0.85)" : "rgba(239, 68, 68, 0.15)";
+  const t = Math.max(0, Math.min(100, score)) / 100;
+
+  let r: number, g: number, b: number;
+  if (t < 0.5) {
+    const u = t / 0.5;
+    r = Math.round(220 + (245 - 220) * u);
+    g = Math.round(38  + (158 - 38)  * u);
+    b = Math.round(38  + (11  - 38)  * u);
+  } else {
+    const u = (t - 0.5) / 0.5;
+    r = Math.round(245 + (16  - 245) * u);
+    g = Math.round(158 + (185 - 158) * u);
+    b = Math.round(11  + (129 - 11)  * u);
+  }
+
+  const alpha = mode === "border" ? 1.0 : 0.95;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export default function CameraScanner() {
@@ -119,27 +133,16 @@ export default function CameraScanner() {
     Promise.resolve()
         .then(() => {
           if (!md?.getUserMedia) throw new Error("no-getusermedia");
-          return md.getUserMedia({
-            video: { facingMode: { ideal: "environment" } },
-            audio: false,
-          });
+          return md.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
         })
         .then(async (s) => {
-          if (cancelled) {
-            s.getTracks().forEach((t) => t.stop());
-            return;
-          }
+          if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
           streamRef.current = s;
           const v = videoRef.current;
-          if (v) {
-            v.srcObject = s;
-            await v.play().catch(() => {});
-          }
+          if (v) { v.srcObject = s; await v.play().catch(() => {}); }
           setStatus("live");
         })
-        .catch(() => {
-          if (!cancelled) setStatus("nolive");
-        });
+        .catch(() => { if (!cancelled) setStatus("nolive"); });
     return () => {
       cancelled = true;
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -178,16 +181,13 @@ export default function CameraScanner() {
       const res = await fetch(photoUrl);
       return await res.blob();
     }
-
     const arr = photoUrl.split(",");
     const match = arr[0].match(/:(.*?);/);
     const mime = match ? match[1] : "image/jpeg";
     const bstr = atob(arr[1]);
     let n = bstr.length;
     const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
     return new Blob([u8arr], { type: mime });
   };
 
@@ -202,7 +202,6 @@ export default function CameraScanner() {
 
   const analyzeShelf = async () => {
     if (!photo) return;
-
     if (photo === "/schap.jpeg") {
       setIsAnalyzing(true);
       setTimeout(() => {
@@ -212,43 +211,23 @@ export default function CameraScanner() {
       }, 1500);
       return;
     }
-
     try {
       setIsAnalyzing(true);
       ping("Analyzing shelf image...");
-
       const imageBlob = await getBlobFromPhoto(photo);
       const formData = new FormData();
       formData.append("image", imageBlob, "captured_shelf.jpg");
-
-      const response = await fetch("/api/pipeline", {
-        method: "POST",
-        body: formData,
-      });
-
+      const response = await fetch("/api/pipeline", { method: "POST", body: formData });
       const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Pipeline processing structural crash.");
-      }
-
-      // 1:1 Mapping parsing matching your clean database structure exactly
-      const parsedProducts: Product[] = (result.data || []).map((item: any) => {
-        return {
-          x: item.x,
-          y: item.y,
-          width: item.width,
-          height: item.height,
-          confidence: item.confidence,
-          class: item.class,
-          class_id: item.class_id,
-          detection_id: item.detection_id,
-          productName: item.productName === "null" ? null : item.productName,
-          barcode: item.barcode === "null" ? null : item.barcode,
-          environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
-        };
-      });
-
+      if (!response.ok || !result.success) throw new Error(result.error || "Pipeline processing structural crash.");
+      const parsedProducts: Product[] = (result.data || []).map((item: any) => ({
+        x: item.x, y: item.y, width: item.width, height: item.height,
+        confidence: item.confidence, class: item.class, class_id: item.class_id,
+        detection_id: item.detection_id,
+        productName: item.productName === "null" ? null : item.productName,
+        barcode: item.barcode === "null" ? null : item.barcode,
+        environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
+      }));
       setProducts(parsedProducts);
       ping(`Success! Loaded ${parsedProducts.length} live items.`);
     } catch (err: any) {
@@ -280,11 +259,7 @@ export default function CameraScanner() {
     const track = streamRef.current?.getVideoTracks?.()[0];
     const caps = track?.getCapabilities?.() as { torch?: boolean } | undefined;
     if (track && caps?.torch) {
-      try {
-        await track.applyConstraints({ advanced: [{ torch: next }] } as any);
-      } catch {
-        /* unsupported */
-      }
+      try { await track.applyConstraints({ advanced: [{ torch: next }] } as any); } catch {}
     }
   };
 
@@ -299,11 +274,7 @@ export default function CameraScanner() {
     e.target.value = "";
   };
 
-  const openDetail = (id: string) => {
-    setSelectedId(id);
-    setSheet("detail");
-  };
-
+  const openDetail = (id: string) => { setSelectedId(id); setSheet("detail"); };
   const openList = () => {
     if (products.length === 0) return ping("Analyze a shelf first to generate listing views");
     setSheet((s) => (s === "list" ? "none" : "list"));
@@ -313,8 +284,6 @@ export default function CameraScanner() {
   const ranked = [...products].sort((a, b) => {
     const d = rank[tierOf(b, lens)] - rank[tierOf(a, lens)];
     if (d || lens === "allergens") return d;
-
-    // Derived proxy fallback properties for local visualization matrices
     const scoreA = lens === "sustainability" ? a.environmentScore : 50;
     const scoreB = lens === "sustainability" ? b.environmentScore : 50;
     return scoreB - scoreA;
@@ -323,32 +292,116 @@ export default function CameraScanner() {
   const selected = products.find((p) => p.detection_id === selectedId) ?? null;
   const meta = LENSES.find((l) => l.id === lens)!;
 
+  const maxScore = products.length > 0 ? Math.max(...products.map((p) => p.environmentScore)) : -1;
+  const bestEcoId = maxScore >= 0 ? products.find((p) => p.environmentScore === maxScore)?.detection_id : null;
+
   return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-950">
+        <style>{`
+          @keyframes goldCirclePulse {
+            0%, 100% {
+              transform: scale(1);
+              opacity: 0.95;
+              box-shadow: 0 0 10px 3px rgba(245, 158, 11, 0.7);
+            }
+            50% {
+              transform: scale(1.6);
+              opacity: 0.1;
+              box-shadow: 0 0 20px 6px rgba(245, 158, 11, 0.2);
+            }
+          }
+        `}</style>
+
         <main
             className="relative w-full overflow-hidden bg-zinc-900
           text-zinc-100 select-none h-[100dvh] sm:my-5 sm:h-[880px]
           sm:w-[420px] sm:max-h-[calc(100dvh-2.5rem)]
           sm:rounded-[2.5rem] sm:border sm:border-zinc-800
-          sm:shadow-2xl"
+          sm:shadow-2xl flex flex-col justify-center"
         >
-          <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className={cx("absolute inset-0 h-full w-full object-cover", (photo || status !== "live") && "opacity-0")}
-          />
-          {!photo && status !== "live" && <Viewfinder />}
-          {photo && (
-              <img
-                  ref={imageRef}
-                  src={photo}
-                  alt="Captured shelf"
-                  onLoad={handleImageLoad}
-                  className="absolute inset-0 h-full w-full object-cover animate-fade-in"
+          {!photo && (
+              <video
+                  ref={videoRef}
+                  autoPlay muted playsInline
+                  className={cx("absolute inset-0 h-full w-full object-cover", status !== "live" && "opacity-0")}
               />
           )}
+          {!photo && status !== "live" && <Viewfinder />}
+
+          {photo && (
+              <div
+                  style={{ aspectRatio: `${imageDims.width} / ${imageDims.height}` }}
+                  className="relative w-full max-h-full mx-auto overflow-hidden animate-fade-in flex items-center justify-center"
+              >
+                <img
+                    ref={imageRef}
+                    src={photo}
+                    alt="Captured shelf"
+                    onLoad={handleImageLoad}
+                    className="w-full h-full object-contain"
+                />
+
+                {products.length > 0 && (
+                    <div className="absolute inset-0 z-10 pointer-events-none">
+                      {products.map((p) => {
+                        const isBest = p.detection_id === bestEcoId;
+                        const isSelected = p.detection_id === selectedId;
+
+                        // Map directly from top-left (0,0) of the image space
+                        const cxPct = (p.x / imageDims.width)  * 100 - (p.width  / imageDims.width)  * 100 / 2;
+                        const cyPct  = (p.y / imageDims.height) * 100 - (p.height / imageDims.height) * 100 / 2;
+
+                        const colorValue = getEcoColor(p.environmentScore, "bg");
+
+                        return (
+                            <button
+                                key={p.detection_id}
+                                onClick={() => openDetail(p.detection_id)}
+                                style={{
+                                  left: `${cxPct}%`,
+                                  top: `${cyPct}%`,
+                                  width: "10px",
+                                  height: "10px",
+                                  transform: "translate(-50%, -50%)",
+                                }}
+                                className={cx(
+                                    "absolute rounded-full border border-white bg-white pointer-events-auto",
+                                    "flex items-center justify-center transition-all shadow-sm shadow-black/40",
+                                    isSelected
+                                        ? "ring-2 ring-emerald-400 scale-125 z-30"
+                                        : isBest
+                                            ? "scale-110 border-amber-400 z-20"
+                                            : "hover:scale-125 hover:z-20 z-10"
+                                )}
+                            >
+                              {/* Microscopic inner dynamic color point */}
+                              <span
+                                  className="w-1.5 h-1.5 rounded-full transition-colors duration-300 block shrink-0"
+                                  style={{ backgroundColor: colorValue }}
+                              />
+
+                              {/* Minimal golden pulse wrapper */}
+                              {isBest && (
+                                  <div
+                                      style={{
+                                        position: "absolute",
+                                        inset: "-1px",
+                                        border: "3px solid #fbbf24",
+                                        borderRadius: "100%",
+                                        pointerEvents: "none",
+                                        zIndex: -1,
+                                        animation: "goldCirclePulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+                                      }}
+                                  />
+                              )}
+                            </button>
+                        );
+                      })}
+                    </div>
+                )}
+              </div>
+          )}
+
           <canvas ref={canvasRef} className="hidden" />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 h-40 z-10" style={{ background: TOP_SCRIM }} />
@@ -364,18 +417,12 @@ export default function CameraScanner() {
           {!photo && (
               <div className="absolute inset-x-0 bottom-44 z-20 flex flex-col items-center gap-3 px-8 text-center">
                 <p className="text-[13px] font-medium text-zinc-300">
-                  {status === "live"
-                      ? "Point at a shelf, then tap to scan"
-                      : status === "init"
-                          ? "Starting camera…"
-                          : "Tap the shutter to take a photo"}
+                  {status === "live" ? "Point at a shelf, then tap to scan" : status === "init" ? "Starting camera…" : "Tap the shutter to take a photo"}
                 </p>
                 {status === "nolive" && (
                     <button
                         onClick={loadSample}
-                        className="rounded-full bg-zinc-800/60 px-4 py-2 text-xs
-                  font-medium text-zinc-200 border border-zinc-700/50
-                  backdrop-blur-md transition active:scale-95 hover:bg-zinc-800"
+                        className="rounded-full bg-zinc-800/60 px-4 py-2 text-xs font-medium text-zinc-200 border border-zinc-700/50 backdrop-blur-md transition active:scale-95 hover:bg-zinc-800"
                     >
                       Use a sample shelf
                     </button>
@@ -388,51 +435,6 @@ export default function CameraScanner() {
                 <p className="text-[13px] font-semibold text-zinc-200 bg-zinc-900/90 px-4 py-2 rounded-full border border-zinc-800 shadow-md backdrop-blur-md">
                   Tap "Analyse Shelf" to detect items
                 </p>
-              </div>
-          )}
-
-          {/* ---- Bounding Rectangles Center Alignment Correction Layer ---- */}
-          {photo && products.length > 0 && (
-              <div className="absolute inset-0 z-10 pointer-events-none">
-                {products.map((p) => {
-                  const widthPct = (p.width / imageDims.width) * 100;
-                  const heightPct = (p.height / imageDims.height) * 100;
-
-                  // Compute anchors based on box dimensions
-                  const leftPct = ((p.x / imageDims.width) * 100) - (widthPct / 2);
-                  const topPct = ((p.y / imageDims.height) * 100) - (heightPct / 2);
-
-                  const currentScore = p.environmentScore;
-                  const borderColor = getEcoColor(currentScore, "border");
-                  const bgColor = getEcoColor(currentScore, "bg");
-                  const isSelected = p.detection_id === selectedId;
-
-                  return (
-                      <button
-                          key={p.detection_id}
-                          onClick={() => openDetail(p.detection_id)}
-                          style={{
-                            left: `${Math.max(0, leftPct)}%`,
-                            top: `${Math.max(0, topPct)}%`,
-                            width: `${widthPct}%`,
-                            height: `${heightPct}%`,
-                            borderColor: borderColor,
-                            backgroundColor: bgColor,
-                          }}
-                          className={cx(
-                              "absolute border-2 rounded-lg pointer-events-auto transition-all animate-fade-in group",
-                              isSelected ? "ring-4 ring-white border-white scale-[1.02] z-20 shadow-2xl" : "hover:border-white z-10"
-                          )}
-                      >
-                        <span
-                            style={{ backgroundColor: borderColor }}
-                            className="absolute -top-2 -left-2 text-[10px] font-bold text-zinc-950 px-1.5 py-0.5 rounded shadow border border-black/20 transform transition group-hover:scale-110"
-                        >
-                    {currentScore}
-                  </span>
-                      </button>
-                  );
-                })}
               </div>
           )}
 
@@ -454,11 +456,7 @@ export default function CameraScanner() {
                                 : "bg-zinc-900/80 text-zinc-300 border-zinc-800/80 backdrop-blur-md"
                         )}
                     >
-                      {active ? (
-                          <ChevronDownIcon className="h-3.5 w-3.5" />
-                      ) : (
-                          <Icon className={cx("h-3.5 w-3.5", iconTint(l.id))} />
-                      )}
+                      {active ? <ChevronDownIcon className="h-3.5 w-3.5" /> : <Icon className={cx("h-3.5 w-3.5", iconTint(l.id))} />}
                       {l.label}
                     </button>
                 );
@@ -525,7 +523,6 @@ export default function CameraScanner() {
           {sheet === "detail" && selected && (
               <DetailSheet product={selected} lens={lens} unit={meta.unit} onClose={() => setSheet("none")} />
           )}
-
           {sheet === "list" && (
               <ListSheet products={ranked} lens={lens} label={meta.label} onPick={openDetail} onClose={() => setSheet("none")} />
           )}
@@ -567,8 +564,6 @@ function DetailSheet({ product, lens, unit, onClose }: { product: Product; lens:
   const t = tierOf(product, lens);
   const style = TIER_STYLE[t];
   const numeric = lens !== "allergens";
-
-  // Dynamic fallback wrapper computing scores directly from environment metrics safely
   const score = numeric ? (lens === "sustainability" ? product.environmentScore : 50) : 0;
 
   return (
@@ -577,7 +572,7 @@ function DetailSheet({ product, lens, unit, onClose }: { product: Product; lens:
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-lg font-bold tracking-tight text-zinc-100 truncate">
-                {product.productName && product.productName !== "null" ? product.productName : `Detected Object`}
+                {product.productName && product.productName !== "null" ? product.productName : "Detected Object"}
               </p>
               <p className="text-xs font-medium text-zinc-400 mt-0.5">
                 {product.barcode && product.barcode !== "null" ? `Barcode: ${product.barcode}` : `Unknown Class (${product.class})`}

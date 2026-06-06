@@ -41,11 +41,39 @@ class RateLimiter {
 
     /**
      * Enqueues a task and returns a promise that resolves when the task is allowed to execute.
+     * Logs if the request was delayed due to rate limiting.
      */
     async acquire(): Promise<void> {
+        const startTime = Date.now();
+        let executedImmediately = false;
+
         return new Promise<void>((resolve) => {
-            this.queue.push(resolve);
+            // Wrap resolve to detect if execution happens instantly vs later
+            const wrappedResolve = () => {
+                executedImmediately = true;
+                resolve();
+            };
+
+            this.queue.push(wrappedResolve);
             this.processQueue();
+
+            // If it didn't resolve immediately during processQueue, it's being delayed
+            if (!executedImmediately) {
+                const queuePosition = this.queue.length;
+                console.warn(
+                    `[RateLimiter] Request delayed due to limit. Current queue depth: ${queuePosition}`,
+                );
+
+                // Override resolve to log the actual wait duration when it finally runs
+                const originalResolve = resolve;
+                resolve = () => {
+                    const delayDuration = Date.now() - startTime;
+                    console.log(
+                        `[RateLimiter] Delayed request released after waiting ${delayDuration}ms.`,
+                    );
+                    originalResolve();
+                };
+            }
         });
     }
 
@@ -106,7 +134,7 @@ export interface ProductIdentificationResult {
  */
 function generateCacheKey(base64Data: string): string {
     const hash = crypto.createHash("md5").update(base64Data).digest("hex");
-    return `product:cachev20260606T2324:${hash}`;
+    return `product:cachev2:${hash}`;
 }
 
 /**
@@ -146,7 +174,7 @@ export async function identifyProductAndBarcode(
         const mistral = getMistralClient();
 
         const prompt =
-            "Analyze this product image. Identify the exact and full product name.";
+            "Analyze this product image. Identify the exact and full product name. If unknown, return null.";
 
         // Mistral expects base64 images formatted as Data URLs inside the message content array
         const imageUrl = `data:${mimeType};base64,${base64Data}`;
@@ -167,16 +195,11 @@ export async function identifyProductAndBarcode(
                 jsonSchema: {
                     name: "ProductIdentificationResult",
                     schemaDefinition: {
-                        type: "object",
-                        properties: {
-                            productName: {
-                                type: "string",
-                                description:
-                                    "The full brand and product name identified in the image.",
-                            },
+                        productName: {
+                            type: "string",
+                            description:
+                                "The full brand and product name identified in the image.",
                         },
-                        required: ["productName"],
-                        additionalProperties: false,
                     },
                 },
             },
@@ -184,8 +207,6 @@ export async function identifyProductAndBarcode(
 
         // Mistral chat completion choices can be strings or undefined
         const responseText = response.choices?.[0]?.message?.content;
-
-        console.log(responseText);
 
         if (!responseText || typeof responseText !== "string") {
             throw new Error("Empty or invalid response received from Mistral.");
