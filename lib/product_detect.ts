@@ -134,7 +134,7 @@ export interface ProductIdentificationResult {
  */
 function generateCacheKey(base64Data: string): string {
     const hash = crypto.createHash("md5").update(base64Data).digest("hex");
-    return `product:cachev20260606T2324:${hash}`;
+    return `product:cachev2:${hash}`;
 }
 
 /**
@@ -174,7 +174,7 @@ export async function identifyProductAndBarcode(
         const mistral = getMistralClient();
 
         const prompt =
-            "Analyze this product image. Identify the exact and full product name.";
+            "Analyze this product image. Identify the exact and full product name. If unknown, return null.";
 
         // Mistral expects base64 images formatted as Data URLs inside the message content array
         const imageUrl = `data:${mimeType};base64,${base64Data}`;
@@ -195,16 +195,11 @@ export async function identifyProductAndBarcode(
                 jsonSchema: {
                     name: "ProductIdentificationResult",
                     schemaDefinition: {
-                        type: "object",
-                        properties: {
-                            productName: {
-                                type: "string",
-                                description:
-                                    "The full brand and product name identified in the image.",
-                            },
+                        productName: {
+                            type: "string",
+                            description:
+                                "The full brand and product name identified in the image.",
                         },
-                        required: ["productName"],
-                        additionalProperties: false,
                     },
                 },
             },
