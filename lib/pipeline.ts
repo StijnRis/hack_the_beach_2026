@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import sharp from "sharp";
 import { processAndSplitImage, RoboflowPrediction } from "./box_detection"; // Adjust import path
 import { identifyProductAndBarcode } from "./product_detect"; // Adjust import path
@@ -10,22 +8,32 @@ export interface EnrichedProductResult extends Omit<
 > {
     productName: string | null;
     barcode: string | null;
+    environmentScore: number;
+}
+
+/**
+ * Generates a random environment score between 1 and 100
+ */
+function generateEnvironmentScore(): number {
+    return Math.floor(Math.random() * 100) + 1;
 }
 
 /**
  * Executes the full pipeline:
- * 1. Detects objects via Roboflow.
- * 2. Iterates predictions to crop snippets using Sharp.
- * 3. Sends snippets to Gemini to get names and barcodes.
- * 4. Combines and returns metadata without base64 data.
+ * 1. Takes an incoming image buffer.
+ * 2. Detects objects via Roboflow.
+ * 3. Iterates predictions to crop snippets using Sharp.
+ * 4. Sends snippets to Gemini to get names and barcodes.
+ * 5. Appends a mock environment score.
+ * 6. Combines and returns metadata without base64 data.
  */
-export async function runProductDetectionPipeline(): Promise<
-    EnrichedProductResult[]
-> {
-    const filePath = path.join(process.cwd(), "public", "schap.jpeg");
-    const buffer = await fs.readFile(filePath);
-
+export async function runProductDetectionPipeline(
+    imageBuffer: Buffer
+): Promise<EnrichedProductResult[]> {
+    
     // 1. Fetch raw predictions from Roboflow
+    // Note: If processAndSplitImage originally relied on the local file, 
+    // you may need to update its parameters to accept this buffer as well.
     const predictions = await processAndSplitImage();
 
     // 2. Concurrently crop and analyze each prediction snippet
@@ -37,16 +45,17 @@ export async function runProductDetectionPipeline(): Promise<
         const left = Math.max(0, Math.round(prediction.x - width / 2));
         const top = Math.max(0, Math.round(prediction.y - height / 2));
 
+        const environmentScore = generateEnvironmentScore();
+
         try {
             // Extract the object image chunk
-            const croppedBuffer = await sharp(buffer)
+            const croppedBuffer = await sharp(imageBuffer)
                 .extract({ left, top, width, height })
                 .toBuffer();
 
             const croppedBase64 = croppedBuffer.toString("base64");
 
             // 3. Query Gemini for product name and barcode
-            // Assuming image format is jpeg based on file path, adjust if dynamic
             const aiResult = await identifyProductAndBarcode(
                 croppedBase64,
                 "image/jpeg",
@@ -64,6 +73,7 @@ export async function runProductDetectionPipeline(): Promise<
                 detection_id: prediction.detection_id,
                 productName: aiResult?.productName ?? null,
                 barcode: aiResult?.barcode ?? null,
+                environmentScore,
             };
         } catch (error) {
             console.error(
@@ -75,6 +85,7 @@ export async function runProductDetectionPipeline(): Promise<
                 ...prediction,
                 productName: null,
                 barcode: null,
+                environmentScore,
             };
         }
     });
