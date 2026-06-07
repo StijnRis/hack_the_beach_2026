@@ -1,5 +1,6 @@
 "use client";
 
+import { EnrichedProductResult } from "@/lib/pipeline";
 import { ComponentType, useEffect, useRef, useState } from "react";
 import {
   AlertIcon,
@@ -79,25 +80,7 @@ export const TIER_STYLE: Record<
   },
 };
 
-export type Product = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  confidence: number;
-  class: string;
-  class_id: number;
-  detection_id: string;
-  productName: string | null;
-  barcode: string | null;
-  environmentScore: number;
-  nutriScore: number | null;
-  allergens: string | null;
-};
-
-interface ExtendedProduct extends Product {}
-
-export function tierOf(p: Product, lens: Lens): Tier {
+export function tierOf(p: EnrichedProductResult, lens: Lens): Tier {
   const score = p.environmentScore;
 
   if (lens === "sustainability") {
@@ -119,7 +102,7 @@ export function tierOf(p: Product, lens: Lens): Tier {
   return "bad";
 }
 
-export function valueText(p: Product, lens: Lens): string {
+export function valueText(p: EnrichedProductResult, lens: Lens): string {
   const score = p.environmentScore;
 
   if (lens === "sustainability") return `${score}/100`;
@@ -132,7 +115,7 @@ export function valueText(p: Product, lens: Lens): string {
   return `${Math.min(100, Math.max(0, 100 - score))}/100`;
 }
 
-export const INITIAL_PRODUCTS: Product[] = [];
+export const INITIAL_PRODUCTS: EnrichedProductResult[] = [];
 
 // ============================================================================
 // HELPER UTILITIES
@@ -238,7 +221,7 @@ function SheetShell({ children, onClose }: { children: React.ReactNode; onClose:
   );
 }
 
-function DetailSheet({ product, lens, unit, onClose }: { product: ExtendedProduct; lens: Lens; unit: string; onClose: () => void }) {
+function DetailSheet({ product, lens, unit, onClose }: { product: EnrichedProductResult; lens: Lens; unit: string; onClose: () => void }) {
   const t = tierOf(product, lens);
   const { score, label: lensValueText, hasBar, color: currentLensColor } = getDynamicValue(product, lens);
 
@@ -250,9 +233,11 @@ function DetailSheet({ product, lens, unit, onClose }: { product: ExtendedProduc
               <p className="text-lg font-bold tracking-tight text-zinc-100 truncate">
                 {product.productName && asText(product.productName) !== "null" ? asText(product.productName) : "Detected Object"}
               </p>
-              <p className="text-xs font-medium text-zinc-400 mt-0.5">
-                {product.barcode && asText(product.barcode) !== "null" ? `Barcode: ${asText(product.barcode)}` : `Unknown Class (${asText(product.class)})`}
-              </p>
+               <p className="text-xs font-medium text-zinc-400 mt-0.5">
+              {product.link ? <a href={product.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">
+                View Details
+              </a> : "No link available"}
+            </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <RatingChip tier={t} />
@@ -306,7 +291,7 @@ function getScoreColor(score: number) {
   return `rgba(${r}, ${g}, ${b}, 0.95)`;
 }
 
-function getDynamicValue(product: ExtendedProduct, lens: Lens): { score: number; label: string; hasBar: boolean; color: string } {
+function getDynamicValue(product: EnrichedProductResult, lens: Lens): { score: number; label: string; hasBar: boolean; color: string } {
   if (lens === "sustainability") {
     const score = product.environmentScore ?? 50;
     return { score, label: `${score}/100`, hasBar: true, color: getScoreColor(score) };
@@ -360,7 +345,7 @@ export default function CameraScanner() {
 
   const [status, setStatus] = useState<CamStatus>("init");
   const [photo, setPhoto] = useState<string | null>(null);
-  const [products, setProducts] = useState<ExtendedProduct[]>([]);
+  const [products, setProducts] = useState<EnrichedProductResult[]>([]);
   const [lens, setLens] = useState<Lens>("sustainability");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Sheet>("none");
