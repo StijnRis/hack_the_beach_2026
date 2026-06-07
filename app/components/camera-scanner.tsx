@@ -347,7 +347,6 @@ export default function CameraScanner() {
                         const isBest = p.detection_id === bestEcoId;
                         const isSelected = p.detection_id === selectedId;
 
-                        // Map directly from top-left (0,0) of the image space
                         const cxPct = (p.x / imageDims.width)  * 100 - (p.width  / imageDims.width)  * 100 / 2;
                         const cyPct  = (p.y / imageDims.height) * 100 - (p.height / imageDims.height) * 100 / 2;
 
@@ -374,13 +373,11 @@ export default function CameraScanner() {
                                             : "hover:scale-125 hover:z-20 z-10"
                                 )}
                             >
-                              {/* Microscopic inner dynamic color point */}
                               <span
                                   className="w-1.5 h-1.5 rounded-full transition-colors duration-300 block shrink-0"
                                   style={{ backgroundColor: colorValue }}
                               />
 
-                              {/* Minimal golden pulse wrapper */}
                               {isBest && (
                                   <div
                                       style={{
@@ -564,7 +561,7 @@ function DetailSheet({ product, lens, unit, onClose }: { product: Product; lens:
   const t = tierOf(product, lens);
   const style = TIER_STYLE[t];
   const numeric = lens !== "allergens";
-  const score = numeric ? (lens === "sustainability" ? product.environmentScore : 50) : 0;
+  const score = numeric ? (product.environmentScore ?? 50) : 0;
 
   return (
       <SheetShell onClose={onClose}>
@@ -596,10 +593,7 @@ function DetailSheet({ product, lens, unit, onClose }: { product: Product; lens:
                 </div>
             )}
           </div>
-          <p className="mt-4 text-sm leading-relaxed text-zinc-300 font-normal">
-            Detected object classification confidence rating is located at {(product.confidence * 100).toFixed(2)}%.
-            Environmental Pipeline score is calculated to be {product.environmentScore}/100.
-          </p>
+          {/* Paragraph description element removed from here */}
         </div>
       </SheetShell>
   );
