@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { isNotNull, sql } from "drizzle-orm"; // Assuming you are using Drizzle ORM based on the syntax
 import sharp from "sharp";
 import { processAndSplitImage, RoboflowPrediction } from "./box_detection";
 import { db } from "./db";
@@ -16,22 +16,6 @@ export interface EnrichedProductResult extends RoboflowPrediction {
     link: string | null;
 }
 
-/**
- * Looks up scores for a product name in the `food_scores` table.
- *
- * Uses Postgres trigram matching (pg_trgm) to find the single closest
- * product by name, regardless of whether it has scores.
- *
- * We order by the `<->` distance operator (which equals
- * `1 - similarity(...)`) instead of `similarity(...) DESC` because `<->`
- * can be served by a KNN GiST trigram index, turning a full-table scan
- * (~2.3s over 4.2M rows) into an index scan (~65ms). The ordering — and
- * therefore the chosen match — is identical. Because we consider every
- * row (not just scored ones), the index must NOT be partial:
- *
- *   CREATE INDEX food_scores_name_trgm_gist
- *     ON food_scores USING gist (product_name gist_trgm_ops);
- */
 async function getScores(productName: string | null) {
     if (!productName) {
         return {
@@ -40,28 +24,75 @@ async function getScores(productName: string | null) {
             nutriScore: null,
             allergens: null,
             databaseLookupDurationMs: 0,
+            debug: {},
         };
     }
 
     const startTime = Date.now();
 
-    const [row] = await db
+    // 1. First, try to find the absolute closest match (even if environmentScore is null)
+    const [exactRow] = await db
         .select({
             environmentScore: foodScores.ecoscoreScore,
             productName: foodScores.productName,
             nutriScore: foodScores.nutriscoreScore,
             allergens: foodScores.allergens,
+            categories: foodScores.categories,
         })
         .from(foodScores)
         .orderBy(sql`${foodScores.productName} <-> ${productName}`)
         .limit(1);
 
+    // If we found a match and it already has an environment score, we are good to go!
+    if (exactRow && exactRow.environmentScore !== null) {
+        return {
+            productName: exactRow.productName ?? null,
+            environmentScore: exactRow.environmentScore ?? null,
+            nutriScore: exactRow.nutriScore ?? null,
+            allergens: exactRow.allergens ?? null,
+            databaseLookupDurationMs: Date.now() - startTime,
+            debug: {
+                usedFallback: false,
+            },
+        };
+    }
+
+    // 2. FALLBACK: The closest match didn't have an environmentScore.
+    // We look for the closest item that DOES have a score, factoring in both name and category similarity.
+    const referenceCategories = exactRow?.categories || "";
+
+    const [fallbackRow] = await db
+        .select({
+            environmentScore: foodScores.ecoscoreScore,
+            productName: foodScores.productName,
+            nutriScore: foodScores.nutriscoreScore,
+            allergens: foodScores.allergens,
+            categories: foodScores.categories,
+        })
+        .from(foodScores)
+        .where(isNotNull(foodScores.ecoscoreScore)) // Force it to find a row with a score
+        .orderBy(
+            // Order by name distance first, but add a weight for category similarity if categories exist
+            sql`${foodScores.productName} <-> ${productName} + (CASE WHEN ${referenceCategories} != '' THEN (${foodScores.categories} <-> ${referenceCategories}) * 0.5 ELSE 0 END)`,
+        )
+        .limit(1);
+
+    // Use fallback data for the environment score, but keep the original closest match's details if preferred.
+    // Here we return the fallback row's data to ensure consistency.
+    const finalRow = fallbackRow || exactRow;
+
     return {
-        productName: row?.productName ?? null,
-        environmentScore: row?.environmentScore ?? null,
-        nutriScore: row?.nutriScore ?? null,
-        allergens: row?.allergens ?? null,
+        productName: finalRow?.productName ?? null,
+        environmentScore: finalRow?.environmentScore ?? null,
+        nutriScore: finalRow?.nutriScore ?? null,
+        allergens: finalRow?.allergens ?? null,
         databaseLookupDurationMs: Date.now() - startTime,
+        debug: {
+            usedFallback: !!fallbackRow,
+            exactMatch: {
+                productName: exactRow?.productName ?? null,
+            },
+        },
     };
 }
 
@@ -125,7 +156,9 @@ async function processPrediction(
             nutriScore: scores.nutriScore,
             allergens: scores.allergens,
             databaseLookupDurationMs: scores.databaseLookupDurationMs,
-            debug: {},
+            debug: {
+                scoreDebug: scores.debug,
+            },
             link: null,
         };
     } catch (error) {
