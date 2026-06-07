@@ -14,7 +14,6 @@ import {
     TagIcon,
 } from "./icons";
 
-
 export type Lens = "sustainability" | "health" | "price" | "allergens";
 export type Tier = "good" | "mid" | "bad";
 
@@ -91,8 +90,11 @@ export function tierOf(p: EnrichedProductResult, lens: Lens): Tier {
     }
 
     if (lens === "allergens") {
-        const rawAllergens = p.allergens ? asText(p.allergens).trim() : "";
-        const hasAllergens = rawAllergens && rawAllergens !== "null" && rawAllergens.toLowerCase() !== "none";
+        const rawAllergens = p.allergens ? p.allergens : "";
+        const hasAllergens =
+            rawAllergens &&
+            rawAllergens !== "null" &&
+            rawAllergens.toLowerCase() !== "none";
         return hasAllergens ? "bad" : "good";
     }
 
@@ -111,8 +113,11 @@ export function valueText(p: EnrichedProductResult, lens: Lens): string {
 
     if (lens === "sustainability") return `${score}/100`;
     if (lens === "allergens") {
-        const rawAllergens = p.allergens ? asText(p.allergens).trim() : "";
-        const hasAllergens = rawAllergens && rawAllergens !== "null" && rawAllergens.toLowerCase() !== "none";
+        const rawAllergens = p.allergens ? p.allergens : "";
+        const hasAllergens =
+            rawAllergens &&
+            rawAllergens !== "null" &&
+            rawAllergens.toLowerCase() !== "none";
         return hasAllergens ? "Allergens Detected" : "Clear";
     }
 
@@ -133,15 +138,6 @@ function cx(...a: (string | false | null | undefined)[]) {
     return a.filter(Boolean).join(" ");
 }
 
-function asText(v: unknown): string {
-    if (v == null) return "";
-    if (typeof v === "object") {
-        const o = v as Record<string, unknown>;
-        return String(o.description ?? o.label ?? o.type ?? JSON.stringify(o));
-    }
-    return String(v);
-}
-
 const TOP_SCRIM = "linear-gradient(to bottom, rgba(9,9,11,0.6), transparent)";
 const BOTTOM_SCRIM =
     "linear-gradient(to top, rgba(9,9,11,0.8), rgba(9,9,11,0.2) 60%, transparent)";
@@ -150,12 +146,17 @@ function iconTint(id: Lens) {
     return id === "health"
         ? "text-rose-500"
         : id === "allergens"
-            ? "text-amber-500"
-            : "text-emerald-400";
+          ? "text-amber-500"
+          : "text-emerald-400";
 }
 
 function parseAllergens(allergenStr: string | null): string[] {
-    if (!allergenStr || allergenStr === "null" || allergenStr.toLowerCase() === "none") return [];
+    if (
+        !allergenStr ||
+        allergenStr === "null" ||
+        allergenStr.toLowerCase() === "none"
+    )
+        return [];
 
     return allergenStr
         .split(/[,;]+/)
@@ -180,7 +181,7 @@ function RatingChip({ tier }: { tier: Tier }) {
             className="rounded-full px-2.5 py-1 text-xs font-semibold"
             style={{ background: s.chipBg, color: s.chipText }}
         >
-            {asText(s.label)}
+            {s.label}
         </span>
     );
 }
@@ -188,7 +189,9 @@ function RatingChip({ tier }: { tier: Tier }) {
 // Custom style injection for the thin scrollbar track in the detail panel
 function ScrollbarStyles() {
     return (
-        <style dangerouslySetInnerHTML={{__html: `
+        <style
+            dangerouslySetInnerHTML={{
+                __html: `
       .allergen-scroll::-webkit-scrollbar {
         width: 4px;
       }
@@ -202,17 +205,19 @@ function ScrollbarStyles() {
       .allergen-scroll::-webkit-scrollbar-thumb:hover {
         background: #52525b;
       }
-    `}} />
+    `,
+            }}
+        />
     );
 }
 
 function ToolButton({
-                        icon: Icon,
-                        label,
-                        onClick,
-                        active,
-                        dim,
-                    }: {
+    icon: Icon,
+    label,
+    onClick,
+    active,
+    dim,
+}: {
     icon: IconType;
     label: string;
     onClick: () => void;
@@ -283,9 +288,9 @@ function Viewfinder() {
 }
 
 function SheetShell({
-                        children,
-                        onClose,
-                    }: {
+    children,
+    onClose,
+}: {
     children: React.ReactNode;
     onClose: () => void;
 }) {
@@ -305,11 +310,11 @@ function SheetShell({
 }
 
 function DetailSheet({
-                         product,
-                         lens,
-                         unit,
-                         onClose,
-                     }: {
+    product,
+    lens,
+    unit,
+    onClose,
+}: {
     product: EnrichedProductResult;
     lens: Lens;
     unit: string;
@@ -331,7 +336,9 @@ function DetailSheet({
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                         <p className="text-lg font-bold tracking-tight text-zinc-100 truncate">
-                            {product.productName && asText(product.productName) !== "null" ? asText(product.productName) : "Detected Object"}
+                            {product.dbProductName
+                                ? product.dbProductName
+                                : "Unknown Object"}
                         </p>
                         <p className="text-xs font-medium text-zinc-400 mt-0.5">
                             {product.link ? (
@@ -361,15 +368,15 @@ function DetailSheet({
                 <div className="mt-4 rounded-xl bg-zinc-950 border border-zinc-800/80 p-4">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-                            {asText(unit)}
+                            {unit}
                         </span>
                         {lens !== "allergens" && (
                             <span
                                 className="text-sm font-bold transition-colors duration-300"
                                 style={{ color: currentLensColor }}
                             >
-                            {asText(lensValueText)}
-                        </span>
+                                {lensValueText}
+                            </span>
                         )}
                     </div>
 
@@ -377,15 +384,17 @@ function DetailSheet({
                         <div className="mt-2">
                             {parsedAllergensList.length > 0 ? (
                                 <div className="allergen-scroll max-h-28 overflow-y-auto pr-1 mt-1 flex flex-wrap gap-1.5">
-                                    {parsedAllergensList.map((allergen, idx) => (
-                                        <span
-                                            key={idx}
-                                            className="bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1"
-                                        >
-                        <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
-                                            {allergen}
-                      </span>
-                                    ))}
+                                    {parsedAllergensList.map(
+                                        (allergen, idx) => (
+                                            <span
+                                                key={idx}
+                                                className="bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1"
+                                            >
+                                                <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+                                                {allergen}
+                                            </span>
+                                        ),
+                                    )}
                                 </div>
                             ) : (
                                 <p className="text-xs font-medium text-emerald-400 flex items-center gap-1 mt-1">
@@ -439,70 +448,40 @@ function getDynamicValue(
     product: EnrichedProductResult,
     lens: Lens,
 ): { score: number; label: string; hasBar: boolean; color: string } {
-    if (lens === "sustainability") {
-        const score = product.environmentScore;
-        if (score == null)
-            return {
-                score: 0,
-                label: "Unknown",
-                hasBar: false,
-                color: "rgba(161, 161, 170, 0.95)",
-            };
-        return {
-            score,
-            label: `${score}/100`,
-            hasBar: true,
-            color: getScoreColor(score),
-        };
-    }
-
-    if (lens === "health") {
-        const rawScore = product.nutriScore;
-        if (rawScore == null)
-            return {
-                score: 0,
-                label: "Unknown",
-                hasBar: false,
-                color: "rgba(161, 161, 170, 0.95)",
-            };
-
-        let letter = "E";
-        let scoreMapping = 10;
-        if (rawScore <= 0) {
-            letter = "A";
-            scoreMapping = 95;
-        } else if (rawScore <= 2) {
-            letter = "B";
-            scoreMapping = 75;
-        } else if (rawScore <= 10) {
-            letter = "C";
-            scoreMapping = 50;
-        } else if (rawScore <= 18) {
-            letter = "D";
-            scoreMapping = 30;
-        }
-
-        return {
-            score: scoreMapping,
-            label: `Nutri-Score ${letter}`,
-            hasBar: true,
-            color: getScoreColor(scoreMapping),
-        };
-    }
-
     if (lens === "allergens") {
-        const value = product.allergens ? asText(product.allergens).trim() : "";
-        const hasAllergens = value && value !== "null" && value.toLowerCase() !== "none";
-        const color = hasAllergens ? "rgba(239, 68, 68, 0.95)" : "rgba(52, 211, 153, 0.95)";
+        const value = product.allergens ? product.allergens.trim() : "";
+        const hasAllergens =
+            value && value !== "null" && value.toLowerCase() !== "none";
+        const color = hasAllergens
+            ? "rgba(239, 68, 68, 0.95)"
+            : "rgba(52, 211, 153, 0.95)";
         return {
             score: 0,
             label: hasAllergens ? "Contains Allergens" : "None Detected",
             hasBar: false,
-            color
+            color,
         };
     }
 
-    return { score: 50, label: "No Details", hasBar: false, color: "rgba(161, 161, 170, 0.95)" };
+    let score;
+    if (lens === "sustainability") {
+        score = product.environmentScore;
+    } else if (lens === "health") {
+        score = product.nutriScore;
+    }
+    if (score == null)
+        return {
+            score: 0,
+            label: "Unknown",
+            hasBar: false,
+            color: "rgba(161, 161, 170, 0.95)",
+        };
+    return {
+        score,
+        label: `${score}/100`,
+        hasBar: true,
+        color: getScoreColor(score),
+    };
 }
 
 // ============================================================================
@@ -641,27 +620,14 @@ export default function CameraScanner() {
             if (!response.ok || !result.success)
                 throw new Error(result.error || "Pipeline processing error.");
 
-            const parsedProducts: EnrichedProductResult[] = (result.data || []).map((item: any) => ({
-                x: Number(item.x),
-                y: Number(item.y),
-                width: Number(item.width),
-                height: Number(item.height),
-                confidence: Number(item.confidence),
-                class: asText(item.class),
-                class_id: Number(item.class_id),
-                detection_id: asText(item.detection_id),
-                productName: item.productName === "null" ? null : asText(item.productName),
-                barcode: item.barcode === "null" ? null : asText(item.barcode),
-                environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
-                nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
-                allergens: item.allergens !== undefined ? asText(item.allergens) : null,
-                link: item.link !== undefined ? asText(item.link) : null,
-            }));
+            const parsedProducts: EnrichedProductResult[] = result.data;
             setProducts(parsedProducts);
             ping(`Success! Loaded ${parsedProducts.length} items.`);
         } catch (err: any) {
             console.error(err);
-            alert(err?.message || "An error occurred while analyzing the shelf.");
+            alert(
+                err?.message || "An error occurred while analyzing the shelf.",
+            );
         } finally {
             setIsAnalyzing(false);
         }
@@ -715,7 +681,7 @@ export default function CameraScanner() {
     };
 
     const selected =
-        products.find((p) => asText(p.detection_id) === selectedId) ?? null;
+        products.find((p) => p.detection_id === selectedId) ?? null;
     const meta = filteredLenses.find((l) => l.id === lens) || filteredLenses[0];
 
     const maxScore =
@@ -725,7 +691,7 @@ export default function CameraScanner() {
     const bestEcoId =
         maxScore >= 0
             ? products.find((p) => p.environmentScore === maxScore)
-                ?.detection_id
+                  ?.detection_id
             : null;
 
     return (
@@ -794,18 +760,16 @@ export default function CameraScanner() {
                                     const cyPct =
                                         (p.y / imageDims.height) * 100 -
                                         ((p.height / imageDims.height) * 100) /
-                                        2;
+                                            2;
 
                                     const { color: mappedLensColor } =
                                         getDynamicValue(p, lens);
 
                                     return (
                                         <button
-                                            key={asText(p.detection_id)}
+                                            key={p.detection_id}
                                             onClick={() =>
-                                                openDetail(
-                                                    asText(p.detection_id),
-                                                )
+                                                openDetail(p.detection_id)
                                             }
                                             style={{
                                                 left: `${cxPct}%`,
@@ -821,15 +785,15 @@ export default function CameraScanner() {
                                                 isSelected
                                                     ? "ring-2 ring-emerald-400 scale-125 z-30"
                                                     : isBest
-                                                        ? "scale-110 border-amber-400 z-20"
-                                                        : "hover:scale-125 hover:z-20 z-10",
+                                                      ? "scale-110 border-amber-400 z-20"
+                                                      : "hover:scale-125 hover:z-20 z-10",
                                             )}
                                         >
                                             <span
                                                 className="w-1.5 h-1.5 rounded-full transition-colors duration-300 block shrink-0"
                                                 style={{
                                                     backgroundColor:
-                                                    mappedLensColor,
+                                                        mappedLensColor,
                                                 }}
                                             />
 
@@ -881,8 +845,8 @@ export default function CameraScanner() {
                             {status === "live"
                                 ? "Point at a shelf, then tap to scan"
                                 : status === "init"
-                                    ? "Starting camera…"
-                                    : "Tap the shutter to take a photo"}
+                                  ? "Starting camera…"
+                                  : "Tap the shutter to take a photo"}
                         </p>
                         {status === "nolive" && (
                             <button
@@ -918,11 +882,18 @@ export default function CameraScanner() {
                                         "transition active:scale-95",
                                         active
                                             ? "bg-zinc-100 text-zinc-900 border-zinc-100"
-                                            : "bg-zinc-900/80 text-zinc-300 border-zinc-800/80 backdrop-blur-md"
+                                            : "bg-zinc-900/80 text-zinc-300 border-zinc-800/80 backdrop-blur-md",
                                     )}
                                 >
-                                    <Icon className={cx("h-3.5 w-3.5", active ? "text-zinc-900" : iconTint(l.id))} />
-                                    {asText(l.label)}
+                                    <Icon
+                                        className={cx(
+                                            "h-3.5 w-3.5",
+                                            active
+                                                ? "text-zinc-900"
+                                                : iconTint(l.id),
+                                        )}
+                                    />
+                                    {l.label}
                                 </button>
                             );
                         })}
@@ -931,14 +902,14 @@ export default function CameraScanner() {
                     <div className="mt-2.5 flex items-center justify-center gap-2 px-4">
                         {photo && products.length > 0 && (
                             <span className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 border border-zinc-800/60 px-3 py-1 text-xs font-medium text-zinc-300 backdrop-blur-md">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                                 {products.length} products found
-              </span>
+                            </span>
                         )}
                         {photo === "/schap-klein.png" && (
                             <span className="rounded-full bg-zinc-800 border border-zinc-700 px-2.5 py-0.5 text-[11px] font-medium text-zinc-400">
-                Sample Template
-              </span>
+                                Sample Template
+                            </span>
                         )}
                     </div>
                 </div>
@@ -946,11 +917,24 @@ export default function CameraScanner() {
                 <div className="absolute inset-x-0 bottom-0 z-20 px-6 pt-3 pb-[max(env(safe-area-inset-bottom),20px)]">
                     <div className="flex items-center justify-between">
                         {photo ? (
-                            <ToolButton icon={RotateIcon} label="Retake" onClick={retake} />
+                            <ToolButton
+                                icon={RotateIcon}
+                                label="Retake"
+                                onClick={retake}
+                            />
                         ) : (
-                            <ToolButton icon={FlashIcon} label="Flash" onClick={toggleFlash} active={flashOn} />
+                            <ToolButton
+                                icon={FlashIcon}
+                                label="Flash"
+                                onClick={toggleFlash}
+                                active={flashOn}
+                            />
                         )}
-                        <ToolButton icon={GalleryIcon} label="Gallery" onClick={() => galleryRef.current?.click()} />
+                        <ToolButton
+                            icon={GalleryIcon}
+                            label="Gallery"
+                            onClick={() => galleryRef.current?.click()}
+                        />
 
                         {photo && products.length === 0 ? (
                             <button
@@ -972,25 +956,51 @@ export default function CameraScanner() {
                             </button>
                         )}
 
-                        <ToolButton icon={GalleryIcon} label="Sample Shelf" onClick={loadSample} />
-                        <ToolButton icon={HistoryIcon} label="History" onClick={() => ping("History coming soon")} />
+                        <ToolButton
+                            icon={GalleryIcon}
+                            label="Sample Shelf"
+                            onClick={loadSample}
+                        />
+                        <ToolButton
+                            icon={HistoryIcon}
+                            label="History"
+                            onClick={() => ping("History coming soon")}
+                        />
                     </div>
                 </div>
 
                 {toast && (
                     <div className="absolute inset-x-0 bottom-32 z-50 flex justify-center animate-fade-in">
-            <span className="rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 backdrop-blur-md shadow-xl">
-              {asText(toast)}
-            </span>
+                        <span className="rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 backdrop-blur-md shadow-xl">
+                            {toast}
+                        </span>
                     </div>
                 )}
 
                 {sheet === "detail" && selected && (
-                    <DetailSheet product={selected} lens={lens} unit={meta.unit} onClose={() => setSheet("none")} />
+                    <DetailSheet
+                        product={selected}
+                        lens={lens}
+                        unit={meta.unit}
+                        onClose={() => setSheet("none")}
+                    />
                 )}
 
-                <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPick} />
-                <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
+                <input
+                    ref={camRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={onPick}
+                />
+                <input
+                    ref={galleryRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onPick}
+                />
             </main>
         </div>
     );
