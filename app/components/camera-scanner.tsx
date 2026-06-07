@@ -18,8 +18,12 @@ import {
   Tier,
   TIER_STYLE,
   tierOf,
-  valueText,
 } from "./data";
+
+interface ExtendedProduct extends Product {
+  nutriScore?: number | null;
+  allergens?: string | null;
+}
 
 type IconType = ComponentType<{ className?: string }>;
 type Sheet = "none" | "detail" | "list";
@@ -29,17 +33,24 @@ function cx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
 }
 
+function asText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return String(o.description ?? o.label ?? o.type ?? "");
+  }
+  return String(v);
+}
+
 const TOP_SCRIM = "linear-gradient(to bottom, rgba(9,9,11,0.6), transparent)";
 const BOTTOM_SCRIM = "linear-gradient(to top, rgba(9,9,11,0.8), rgba(9,9,11,0.2) 60%, transparent)";
 
 function iconTint(id: Lens) {
   return id === "health"
       ? "text-rose-500"
-      : id === "price"
-          ? "text-slate-400"
-          : id === "allergens"
-              ? "text-amber-500"
-              : "text-emerald-400";
+      : id === "allergens"
+          ? "text-amber-500"
+          : "text-emerald-400";
 }
 
 function RatingChip({ tier }: { tier: Tier }) {
@@ -49,7 +60,7 @@ function RatingChip({ tier }: { tier: Tier }) {
           className="rounded-full px-2.5 py-1 text-xs font-semibold"
           style={{ background: s.chipBg, color: s.chipText }}
       >
-      {s.label}
+      {asText(s.label)}
     </span>
   );
 }
@@ -88,9 +99,9 @@ function ToolButton({
   );
 }
 
-function getEcoColor(score: number, mode: "border" | "bg") {
+// Blends Red-Yellow-Green based on score criteria
+function getScoreColor(score: number) {
   const t = Math.max(0, Math.min(100, score)) / 100;
-
   let r: number, g: number, b: number;
   if (t < 0.5) {
     const u = t / 0.5;
@@ -103,9 +114,49 @@ function getEcoColor(score: number, mode: "border" | "bg") {
     g = Math.round(158 + (185 - 158) * u);
     b = Math.round(11  + (129 - 11)  * u);
   }
+  return `rgba(${r}, ${g}, ${b}, 0.95)`;
+}
 
-  const alpha = mode === "border" ? 1.0 : 0.95;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+// Centralized dynamic style engine mapping values, colors, and layouts across lenses
+function getDynamicValue(product: ExtendedProduct, lens: Lens): { score: number; label: string; hasBar: boolean; color: string } {
+  if (lens === "sustainability") {
+    const score = product.environmentScore ?? 50;
+    return { score, label: `${score}/100`, hasBar: true, color: getScoreColor(score) };
+  }
+
+  if (lens === "health") {
+    const rawScore = product.nutriScore;
+    if (rawScore == null) return { score: 0, label: "Unknown", hasBar: false, color: "rgba(161, 161, 170, 0.95)" };
+
+    let letter = "E";
+    let scoreMapping = 10; // Red/E fallback
+    if (rawScore <= 0) { letter = "A"; scoreMapping = 95; }
+    else if (rawScore <= 2) { letter = "B"; scoreMapping = 75; }
+    else if (rawScore <= 10) { letter = "C"; scoreMapping = 50; }
+    else if (rawScore <= 18) { letter = "D"; scoreMapping = 30; }
+
+    return {
+      score: scoreMapping,
+      label: `Nutri-Score ${letter}`,
+      hasBar: true,
+      color: getScoreColor(scoreMapping)
+    };
+  }
+
+  if (lens === "allergens") {
+    const value = product.allergens?.trim();
+    const hasAllergens = value && value !== "null" && value.toLowerCase() !== "none";
+    // Red if allergens present, otherwise clean green fallback
+    const color = hasAllergens ? "rgba(239, 68, 68, 0.95)" : "rgba(52, 211, 153, 0.95)";
+    return {
+      score: 0,
+      label: hasAllergens ? value : "None Detected",
+      hasBar: false,
+      color
+    };
+  }
+
+  return { score: 50, label: "No Details", hasBar: false, color: "rgba(161, 161, 170, 0.95)" };
 }
 
 export default function CameraScanner() {
@@ -118,7 +169,7 @@ export default function CameraScanner() {
 
   const [status, setStatus] = useState<CamStatus>("init");
   const [photo, setPhoto] = useState<string | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ExtendedProduct[]>([]);
   const [lens, setLens] = useState<Lens>("sustainability");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Sheet>("none");
@@ -126,6 +177,8 @@ export default function CameraScanner() {
   const [toast, setToast] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [imageDims, setImageDims] = useState({ width: 1, height: 1 });
+
+  const filteredLenses = LENSES.filter((l) => l.id !== "price");
 
   useEffect(() => {
     let cancelled = false;
@@ -220,13 +273,15 @@ export default function CameraScanner() {
       const response = await fetch("/api/pipeline", { method: "POST", body: formData });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "Pipeline processing structural crash.");
-      const parsedProducts: Product[] = (result.data || []).map((item: any) => ({
+      const parsedProducts: ExtendedProduct[] = (result.data || []).map((item: any) => ({
         x: item.x, y: item.y, width: item.width, height: item.height,
         confidence: item.confidence, class: item.class, class_id: item.class_id,
         detection_id: item.detection_id,
         productName: item.productName === "null" ? null : item.productName,
         barcode: item.barcode === "null" ? null : item.barcode,
         environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
+        nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
+        allergens: item.allergens !== undefined ? item.allergens : null,
       }));
       setProducts(parsedProducts);
       ping(`Success! Loaded ${parsedProducts.length} live items.`);
@@ -284,15 +339,15 @@ export default function CameraScanner() {
   const ranked = [...products].sort((a, b) => {
     const d = rank[tierOf(b, lens)] - rank[tierOf(a, lens)];
     if (d || lens === "allergens") return d;
-    const scoreA = lens === "sustainability" ? a.environmentScore : 50;
-    const scoreB = lens === "sustainability" ? b.environmentScore : 50;
+    const scoreA = getDynamicValue(a, lens).score;
+    const scoreB = getDynamicValue(b, lens).score;
     return scoreB - scoreA;
   });
 
   const selected = products.find((p) => p.detection_id === selectedId) ?? null;
-  const meta = LENSES.find((l) => l.id === lens)!;
+  const meta = filteredLenses.find((l) => l.id === lens) || filteredLenses[0];
 
-  const maxScore = products.length > 0 ? Math.max(...products.map((p) => p.environmentScore)) : -1;
+  const maxScore = products.length > 0 ? Math.max(...products.map((p) => p.environmentScore ?? 0)) : -1;
   const bestEcoId = maxScore >= 0 ? products.find((p) => p.environmentScore === maxScore)?.detection_id : null;
 
   return (
@@ -350,7 +405,8 @@ export default function CameraScanner() {
                         const cxPct = (p.x / imageDims.width)  * 100 - (p.width  / imageDims.width)  * 100 / 2;
                         const cyPct  = (p.y / imageDims.height) * 100 - (p.height / imageDims.height) * 100 / 2;
 
-                        const colorValue = getEcoColor(p.environmentScore, "bg");
+                        // Dynamic colors configured relative to the active lens context choice
+                        const { color: mappedLensColor } = getDynamicValue(p, lens);
 
                         return (
                             <button
@@ -375,7 +431,7 @@ export default function CameraScanner() {
                             >
                               <span
                                   className="w-1.5 h-1.5 rounded-full transition-colors duration-300 block shrink-0"
-                                  style={{ backgroundColor: colorValue }}
+                                  style={{ backgroundColor: mappedLensColor }}
                               />
 
                               {isBest && (
@@ -437,7 +493,7 @@ export default function CameraScanner() {
 
           <div className="absolute inset-x-0 top-0 z-20 pt-[max(env(safe-area-inset-top),14px)]">
             <div className="no-scrollbar flex gap-2 overflow-x-auto px-4">
-              {LENSES.map((l) => {
+              {filteredLenses.map((l) => {
                 const active = l.id === lens;
                 const Icon = l.icon;
                 return (
@@ -454,7 +510,7 @@ export default function CameraScanner() {
                         )}
                     >
                       {active ? <ChevronDownIcon className="h-3.5 w-3.5" /> : <Icon className={cx("h-3.5 w-3.5", iconTint(l.id))} />}
-                      {l.label}
+                      {asText(l.label)}
                     </button>
                 );
               })}
@@ -557,11 +613,11 @@ function SheetShell({ children, onClose }: { children: React.ReactNode; onClose:
   );
 }
 
-function DetailSheet({ product, lens, unit, onClose }: { product: Product; lens: Lens; unit: string; onClose: () => void }) {
+function DetailSheet({ product, lens, unit, onClose }: { product: ExtendedProduct; lens: Lens; unit: string; onClose: () => void }) {
   const t = tierOf(product, lens);
-  const style = TIER_STYLE[t];
-  const numeric = lens !== "allergens";
-  const score = numeric ? (product.environmentScore ?? 50) : 0;
+
+  // Destructure lens-specific rendering attributes dynamically
+  const { score, label: lensValueText, hasBar, color: currentLensColor } = getDynamicValue(product, lens);
 
   return (
       <SheetShell onClose={onClose}>
@@ -584,28 +640,34 @@ function DetailSheet({ product, lens, unit, onClose }: { product: Product; lens:
           </div>
           <div className="mt-4 rounded-xl bg-zinc-950 border border-zinc-800/80 p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">{unit}</span>
-              <span className="text-sm font-bold" style={{ color: style.chipText }}>{valueText(product, lens)}</span>
+              <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">{asText(unit)}</span>
+              {/* Dynamic value color configuration matching active choice parameters */}
+              <span className="text-sm font-bold transition-colors duration-300" style={{ color: currentLensColor }}>
+                {lensValueText}
+              </span>
             </div>
-            {numeric && (
+            {hasBar && (
                 <div className="mt-3 h-2 rounded-full bg-zinc-800">
-                  <div className="h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${score}%`, background: style.dot }} />
+                  {/* Progress tracker shifting background dynamically relative to computed scores */}
+                  <div
+                      className="h-full rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${score}%`, background: currentLensColor }}
+                  />
                 </div>
             )}
           </div>
-          {/* Paragraph description element removed from here */}
         </div>
       </SheetShell>
   );
 }
 
-function ListSheet({ products, lens, label, onPick, onClose }: { products: Product[]; lens: Lens; label: string; onPick: (id: string) => void; onClose: () => void }) {
+function ListSheet({ products, lens, label, onPick, onClose }: { products: ExtendedProduct[]; lens: Lens; label: string; onPick: (id: string) => void; onClose: () => void }) {
   return (
       <SheetShell onClose={onClose}>
         <div className="flex items-center justify-between px-6">
           <div>
             <p className="text-md font-bold text-zinc-100">{products.length} Items Captured</p>
-            <p className="text-xs text-zinc-400 mt-0.5">Organized by {label}</p>
+            <p className="text-xs text-zinc-400 mt-0.5">Organized by {asText(label)}</p>
           </div>
           <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-full bg-zinc-800 text-zinc-400 hover:text-zinc-200">
             <CloseIcon className="h-3.5 w-3.5" />
@@ -614,14 +676,14 @@ function ListSheet({ products, lens, label, onPick, onClose }: { products: Produ
         <div className="mt-4 max-h-[44dvh] overflow-y-auto px-4 pb-2 space-y-1">
           {products.map((p) => {
             const t = tierOf(p, lens);
-            const score = lens === "sustainability" ? p.environmentScore : 50;
+            const { label: lensValueText, color: currentLensColor } = getDynamicValue(p, lens);
             return (
                 <button
                     key={p.detection_id}
                     onClick={() => onPick(p.detection_id)}
                     className="flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition active:bg-zinc-800 hover:bg-zinc-800/50"
                 >
-                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: TIER_STYLE[t].dot }} />
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: currentLensColor }} />
                   <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-zinc-200">
                   {p.productName && p.productName !== "null" ? p.productName : "Detected Item"}
@@ -630,7 +692,9 @@ function ListSheet({ products, lens, label, onPick, onClose }: { products: Produ
                   {p.barcode && p.barcode !== "null" ? `Barcode: ${p.barcode}` : `Class: ${p.class}`}
                 </span>
               </span>
-                  {lens !== "allergens" && <span className="text-sm font-bold text-zinc-300 pr-1">{score}</span>}
+                  <span className="text-xs font-bold pr-1 truncate max-w-[100px]" style={{ color: currentLensColor }}>
+                    {lensValueText}
+                  </span>
                   <RatingChip tier={t} />
                 </button>
             );
