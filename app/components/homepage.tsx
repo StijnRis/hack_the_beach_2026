@@ -23,7 +23,7 @@ export default function HomePage(): React.JSX.Element {
                     and uncover their true sustainability, ethical, and social footprint.
                 </p>
                 <div style={styles.ctaGroup}>
-                    <Link href="/scanner" style={styles.primaryBtn}>
+                    <Link href="#top" style={styles.primaryBtn}>
                         Open Camera Scanner
                     </Link>
                     <a href="#mission" style={styles.secondaryBtn}>Read Our Mission</a>
