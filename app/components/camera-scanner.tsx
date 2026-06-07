@@ -452,32 +452,7 @@ export default function CameraScanner() {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "Pipeline processing error.");
 
-      const parsedProducts: ExtendedProduct[] = (result.data || [])
-          .map((item: any) => {
-            const rawName = item.productName === "null" ? null : asText(item.productName);
-            return {
-              x: Number(item.x),
-              y: Number(item.y),
-              width: Number(item.width),
-              height: Number(item.height),
-              confidence: Number(item.confidence),
-              class: asText(item.class),
-              class_id: Number(item.class_id),
-              detection_id: asText(item.detection_id),
-              productName: rawName,
-              barcode: item.barcode === "null" ? null : asText(item.barcode),
-              environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
-              nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
-              allergens: item.allergens !== undefined ? asText(item.allergens) : null,
-            };
-          })
-          // 🟢 Bulletproof Filter: Removes any variations of null, blank entries, or literal "Detected Object" entries.
-          .filter((product) => {
-            if (!product.productName) return false;
-            const normalized = product.productName.trim().toLowerCase();
-            return normalized !== "detected object" && normalized !== "null" && normalized !== "";
-          });
-
+      const parsedProducts: EnrichedProductResult[] = result.data
       setProducts(parsedProducts);
       ping(`Success! Loaded ${parsedProducts.length} items.`);
     } catch (err: any) {
