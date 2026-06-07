@@ -454,22 +454,7 @@ export default function CameraScanner() {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "Pipeline processing error.");
 
-      const parsedProducts: EnrichedProductResult[] = (result.data || []).map((item: any) => ({
-        x: Number(item.x),
-        y: Number(item.y),
-        width: Number(item.width),
-        height: Number(item.height),
-        confidence: Number(item.confidence),
-        class: asText(item.class),
-        class_id: Number(item.class_id),
-        detection_id: asText(item.detection_id),
-        productName: item.productName === "null" ? null : asText(item.productName),
-        barcode: item.barcode === "null" ? null : asText(item.barcode),
-        environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
-        nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
-        allergens: item.allergens !== undefined ? asText(item.allergens) : null,
-        link: item.link !== undefined ? asText(item.link) : null,
-      }));
+      const parsedProducts: EnrichedProductResult[] = result.data
       setProducts(parsedProducts);
       ping(`Success! Loaded ${parsedProducts.length} items.`);
     } catch (err: any) {
