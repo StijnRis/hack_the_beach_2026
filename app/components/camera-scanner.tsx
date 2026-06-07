@@ -13,7 +13,6 @@ import {
   TagIcon,
 } from "./icons";
 
-
 export type Lens = "sustainability" | "health" | "price" | "allergens";
 export type Tier = "good" | "mid" | "bad";
 
@@ -422,7 +421,7 @@ export default function CameraScanner() {
   };
 
   const getBlobFromPhoto = async (photoUrl: string): Promise<Blob> => {
-    if (photoUrl.startsWith("blob:")) {
+    if (photoUrl.startsWith("blob:") || photoUrl.startsWith("data:")) {
       const res = await fetch(photoUrl);
       return await res.blob();
     }
@@ -454,7 +453,6 @@ export default function CameraScanner() {
 
       let imageBlob: Blob;
 
-      // New addition: If it is a string asset path, fetch the file binary over the wire first
       if (photo.startsWith("/")) {
         const fileResponse = await fetch(photo);
         imageBlob = await fileResponse.blob();
@@ -469,21 +467,32 @@ export default function CameraScanner() {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "Pipeline processing error.");
 
-      const parsedProducts: ExtendedProduct[] = (result.data || []).map((item: any) => ({
-        x: Number(item.x),
-        y: Number(item.y),
-        width: Number(item.width),
-        height: Number(item.height),
-        confidence: Number(item.confidence),
-        class: asText(item.class),
-        class_id: Number(item.class_id),
-        detection_id: asText(item.detection_id),
-        productName: item.productName === "null" ? null : asText(item.productName),
-        barcode: item.barcode === "null" ? null : asText(item.barcode),
-        environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
-        nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
-        allergens: item.allergens !== undefined ? asText(item.allergens) : null,
-      }));
+      const parsedProducts: ExtendedProduct[] = (result.data || [])
+          .map((item: any) => {
+            const rawName = item.productName === "null" ? null : asText(item.productName);
+            return {
+              x: Number(item.x),
+              y: Number(item.y),
+              width: Number(item.width),
+              height: Number(item.height),
+              confidence: Number(item.confidence),
+              class: asText(item.class),
+              class_id: Number(item.class_id),
+              detection_id: asText(item.detection_id),
+              productName: rawName,
+              barcode: item.barcode === "null" ? null : asText(item.barcode),
+              environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
+              nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
+              allergens: item.allergens !== undefined ? asText(item.allergens) : null,
+            };
+          })
+          // 🟢 Bulletproof Filter: Removes any variations of null, blank entries, or literal "Detected Object" entries.
+          .filter((product) => {
+            if (!product.productName) return false;
+            const normalized = product.productName.trim().toLowerCase();
+            return normalized !== "detected object" && normalized !== "null" && normalized !== "";
+          });
+
       setProducts(parsedProducts);
       ping(`Success! Loaded ${parsedProducts.length} items.`);
     } catch (err: any) {
@@ -719,7 +728,7 @@ export default function CameraScanner() {
           </div>
 
           <div className="absolute inset-x-0 bottom-0 z-20 px-6 pt-3 pb-[max(env(safe-area-inset-bottom),20px)]">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between w-full">
               {photo ? (
                   <ToolButton icon={RotateIcon} label="Retake" onClick={retake} />
               ) : (
@@ -747,13 +756,7 @@ export default function CameraScanner() {
                   </button>
               )}
 
-              <div className="mt-4">
-                <ToolButton
-                    icon={GalleryIcon}
-                    label="Sample Shelf"
-                    onClick={loadSample}
-                />
-              </div>
+              <ToolButton icon={GalleryIcon} label="Sample" onClick={loadSample} />
               <ToolButton icon={HistoryIcon} label="History" onClick={() => ping("History coming soon")} />
             </div>
           </div>
