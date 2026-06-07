@@ -14,6 +14,7 @@ import {
     TagIcon,
 } from "./icons";
 
+
 export type Lens = "sustainability" | "health" | "price" | "allergens";
 export type Tier = "good" | "mid" | "bad";
 
@@ -64,7 +65,7 @@ export const TIER_STYLE: Record<
         dot: "#3f7d4e",
         chipBg: "#e3efe2",
         chipText: "#2f6b3e",
-        label: "Great",
+        label: "Safe",
     },
     mid: {
         dot: "#c8862a",
@@ -76,7 +77,7 @@ export const TIER_STYLE: Record<
         dot: "#b5483d",
         chipBg: "#f4ded9",
         chipText: "#8e2f26",
-        label: "Poor",
+        label: "Warning",
     },
 };
 
@@ -90,7 +91,9 @@ export function tierOf(p: EnrichedProductResult, lens: Lens): Tier {
     }
 
     if (lens === "allergens") {
-        return score > 40 ? "good" : "bad";
+        const rawAllergens = p.allergens ? asText(p.allergens).trim() : "";
+        const hasAllergens = rawAllergens && rawAllergens !== "null" && rawAllergens.toLowerCase() !== "none";
+        return hasAllergens ? "bad" : "good";
     }
 
     const derivedScore =
@@ -107,7 +110,11 @@ export function valueText(p: EnrichedProductResult, lens: Lens): string {
     const score = p.environmentScore;
 
     if (lens === "sustainability") return `${score}/100`;
-    if (lens === "allergens") return score > 40 ? "Safe" : "Warning";
+    if (lens === "allergens") {
+        const rawAllergens = p.allergens ? asText(p.allergens).trim() : "";
+        const hasAllergens = rawAllergens && rawAllergens !== "null" && rawAllergens.toLowerCase() !== "none";
+        return hasAllergens ? "Allergens Detected" : "Clear";
+    }
 
     if (lens === "health") {
         return `${Math.min(100, Math.max(0, score + 10))}/100`;
@@ -143,8 +150,23 @@ function iconTint(id: Lens) {
     return id === "health"
         ? "text-rose-500"
         : id === "allergens"
-          ? "text-amber-500"
-          : "text-emerald-400";
+            ? "text-amber-500"
+            : "text-emerald-400";
+}
+
+function parseAllergens(allergenStr: string | null): string[] {
+    if (!allergenStr || allergenStr === "null" || allergenStr.toLowerCase() === "none") return [];
+
+    return allergenStr
+        .split(/[,;]+/)
+        .map((item) => {
+            let cleaned = item.trim();
+            if (cleaned.includes(":")) {
+                cleaned = cleaned.split(":")[1];
+            }
+            return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+        })
+        .filter((item) => item.length > 0);
 }
 
 // ============================================================================
@@ -163,13 +185,34 @@ function RatingChip({ tier }: { tier: Tier }) {
     );
 }
 
+// Custom style injection for the thin scrollbar track in the detail panel
+function ScrollbarStyles() {
+    return (
+        <style dangerouslySetInnerHTML={{__html: `
+      .allergen-scroll::-webkit-scrollbar {
+        width: 4px;
+      }
+      .allergen-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .allergen-scroll::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+        border-radius: 9999px;
+      }
+      .allergen-scroll::-webkit-scrollbar-thumb:hover {
+        background: #52525b;
+      }
+    `}} />
+    );
+}
+
 function ToolButton({
-    icon: Icon,
-    label,
-    onClick,
-    active,
-    dim,
-}: {
+                        icon: Icon,
+                        label,
+                        onClick,
+                        active,
+                        dim,
+                    }: {
     icon: IconType;
     label: string;
     onClick: () => void;
@@ -195,7 +238,7 @@ function ToolButton({
             </span>
             <span
                 className={cx(
-                    "text-[11px] font-medium tracking-wide text-zinc-400 text-center line-clamp-2 leading-tight",
+                    "text-[11px] font-medium tracking-wide text-zinc-400 text-center line-clamp-2 leading-tight h-8 flex items-start justify-center",
                     dim && "opacity-30",
                 )}
             >
@@ -240,9 +283,9 @@ function Viewfinder() {
 }
 
 function SheetShell({
-    children,
-    onClose,
-}: {
+                        children,
+                        onClose,
+                    }: {
     children: React.ReactNode;
     onClose: () => void;
 }) {
@@ -262,11 +305,11 @@ function SheetShell({
 }
 
 function DetailSheet({
-    product,
-    lens,
-    unit,
-    onClose,
-}: {
+                         product,
+                         lens,
+                         unit,
+                         onClose,
+                     }: {
     product: EnrichedProductResult;
     lens: Lens;
     unit: string;
@@ -279,16 +322,16 @@ function DetailSheet({
         hasBar,
         color: currentLensColor,
     } = getDynamicValue(product, lens);
+    const parsedAllergensList = parseAllergens(product.allergens);
 
     return (
         <SheetShell onClose={onClose}>
+            <ScrollbarStyles />
             <div className="px-6">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                         <p className="text-lg font-bold tracking-tight text-zinc-100 truncate">
-                            {product.dbProductName
-                                ? product.dbProductName
-                                : "Unknown Object"}
+                            {product.productName && asText(product.productName) !== "null" ? asText(product.productName) : "Detected Object"}
                         </p>
                         <p className="text-xs font-medium text-zinc-400 mt-0.5">
                             {product.link ? (
@@ -320,14 +363,38 @@ function DetailSheet({
                         <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
                             {asText(unit)}
                         </span>
-                        <span
-                            className="text-sm font-bold transition-colors duration-300"
-                            style={{ color: currentLensColor }}
-                        >
+                        {lens !== "allergens" && (
+                            <span
+                                className="text-sm font-bold transition-colors duration-300"
+                                style={{ color: currentLensColor }}
+                            >
                             {asText(lensValueText)}
                         </span>
+                        )}
                     </div>
-                    {hasBar && (
+
+                    {lens === "allergens" ? (
+                        <div className="mt-2">
+                            {parsedAllergensList.length > 0 ? (
+                                <div className="allergen-scroll max-h-28 overflow-y-auto pr-1 mt-1 flex flex-wrap gap-1.5">
+                                    {parsedAllergensList.map((allergen, idx) => (
+                                        <span
+                                            key={idx}
+                                            className="bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1"
+                                        >
+                        <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+                                            {allergen}
+                      </span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs font-medium text-emerald-400 flex items-center gap-1 mt-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                    No major allergen flags found.
+                                </p>
+                            )}
+                        </div>
+                    ) : hasBar ? (
                         <div className="mt-3 h-2 rounded-full bg-zinc-800">
                             <div
                                 className="h-full rounded-full transition-all duration-500 ease-out"
@@ -337,7 +404,7 @@ function DetailSheet({
                                 }}
                             />
                         </div>
-                    )}
+                    ) : null}
                 </div>
             </div>
         </SheetShell>
@@ -425,25 +492,17 @@ function getDynamicValue(
 
     if (lens === "allergens") {
         const value = product.allergens ? asText(product.allergens).trim() : "";
-        const hasAllergens =
-            value && value !== "null" && value.toLowerCase() !== "none";
-        const color = hasAllergens
-            ? "rgba(239, 68, 68, 0.95)"
-            : "rgba(52, 211, 153, 0.95)";
+        const hasAllergens = value && value !== "null" && value.toLowerCase() !== "none";
+        const color = hasAllergens ? "rgba(239, 68, 68, 0.95)" : "rgba(52, 211, 153, 0.95)";
         return {
-            score: hasAllergens ? 0 : 100,
-            label: hasAllergens ? value : "None Detected",
+            score: 0,
+            label: hasAllergens ? "Contains Allergens" : "None Detected",
             hasBar: false,
-            color,
+            color
         };
     }
 
-    return {
-        score: 50,
-        label: "No Details",
-        hasBar: false,
-        color: "rgba(161, 161, 170, 0.95)",
-    };
+    return { score: 50, label: "No Details", hasBar: false, color: "rgba(161, 161, 170, 0.95)" };
 }
 
 // ============================================================================
@@ -582,14 +641,27 @@ export default function CameraScanner() {
             if (!response.ok || !result.success)
                 throw new Error(result.error || "Pipeline processing error.");
 
-            const parsedProducts: EnrichedProductResult[] = result.data;
+            const parsedProducts: EnrichedProductResult[] = (result.data || []).map((item: any) => ({
+                x: Number(item.x),
+                y: Number(item.y),
+                width: Number(item.width),
+                height: Number(item.height),
+                confidence: Number(item.confidence),
+                class: asText(item.class),
+                class_id: Number(item.class_id),
+                detection_id: asText(item.detection_id),
+                productName: item.productName === "null" ? null : asText(item.productName),
+                barcode: item.barcode === "null" ? null : asText(item.barcode),
+                environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
+                nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
+                allergens: item.allergens !== undefined ? asText(item.allergens) : null,
+                link: item.link !== undefined ? asText(item.link) : null,
+            }));
             setProducts(parsedProducts);
             ping(`Success! Loaded ${parsedProducts.length} items.`);
         } catch (err: any) {
             console.error(err);
-            alert(
-                err?.message || "An error occurred while analyzing the shelf.",
-            );
+            alert(err?.message || "An error occurred while analyzing the shelf.");
         } finally {
             setIsAnalyzing(false);
         }
@@ -653,7 +725,7 @@ export default function CameraScanner() {
     const bestEcoId =
         maxScore >= 0
             ? products.find((p) => p.environmentScore === maxScore)
-                  ?.detection_id
+                ?.detection_id
             : null;
 
     return (
@@ -722,7 +794,7 @@ export default function CameraScanner() {
                                     const cyPct =
                                         (p.y / imageDims.height) * 100 -
                                         ((p.height / imageDims.height) * 100) /
-                                            2;
+                                        2;
 
                                     const { color: mappedLensColor } =
                                         getDynamicValue(p, lens);
@@ -749,15 +821,15 @@ export default function CameraScanner() {
                                                 isSelected
                                                     ? "ring-2 ring-emerald-400 scale-125 z-30"
                                                     : isBest
-                                                      ? "scale-110 border-amber-400 z-20"
-                                                      : "hover:scale-125 hover:z-20 z-10",
+                                                        ? "scale-110 border-amber-400 z-20"
+                                                        : "hover:scale-125 hover:z-20 z-10",
                                             )}
                                         >
                                             <span
                                                 className="w-1.5 h-1.5 rounded-full transition-colors duration-300 block shrink-0"
                                                 style={{
                                                     backgroundColor:
-                                                        mappedLensColor,
+                                                    mappedLensColor,
                                                 }}
                                             />
 
@@ -809,8 +881,8 @@ export default function CameraScanner() {
                             {status === "live"
                                 ? "Point at a shelf, then tap to scan"
                                 : status === "init"
-                                  ? "Starting camera…"
-                                  : "Tap the shutter to take a photo"}
+                                    ? "Starting camera…"
+                                    : "Tap the shutter to take a photo"}
                         </p>
                         {status === "nolive" && (
                             <button
@@ -846,17 +918,10 @@ export default function CameraScanner() {
                                         "transition active:scale-95",
                                         active
                                             ? "bg-zinc-100 text-zinc-900 border-zinc-100"
-                                            : "bg-zinc-900/80 text-zinc-300 border-zinc-800/80 backdrop-blur-md",
+                                            : "bg-zinc-900/80 text-zinc-300 border-zinc-800/80 backdrop-blur-md"
                                     )}
                                 >
-                                    <Icon
-                                        className={cx(
-                                            "h-3.5 w-3.5",
-                                            active
-                                                ? "text-zinc-900"
-                                                : iconTint(l.id),
-                                        )}
-                                    />
+                                    <Icon className={cx("h-3.5 w-3.5", active ? "text-zinc-900" : iconTint(l.id))} />
                                     {asText(l.label)}
                                 </button>
                             );
@@ -866,39 +931,26 @@ export default function CameraScanner() {
                     <div className="mt-2.5 flex items-center justify-center gap-2 px-4">
                         {photo && products.length > 0 && (
                             <span className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 border border-zinc-800/60 px-3 py-1 text-xs font-medium text-zinc-300 backdrop-blur-md">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                                 {products.length} products found
-                            </span>
+              </span>
                         )}
                         {photo === "/schap-klein.png" && (
                             <span className="rounded-full bg-zinc-800 border border-zinc-700 px-2.5 py-0.5 text-[11px] font-medium text-zinc-400">
-                                Sample Template
-                            </span>
+                Sample Template
+              </span>
                         )}
                     </div>
                 </div>
 
                 <div className="absolute inset-x-0 bottom-0 z-20 px-6 pt-3 pb-[max(env(safe-area-inset-bottom),20px)]">
-                    <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center justify-between">
                         {photo ? (
-                            <ToolButton
-                                icon={RotateIcon}
-                                label="Retake"
-                                onClick={retake}
-                            />
+                            <ToolButton icon={RotateIcon} label="Retake" onClick={retake} />
                         ) : (
-                            <ToolButton
-                                icon={FlashIcon}
-                                label="Flash"
-                                onClick={toggleFlash}
-                                active={flashOn}
-                            />
+                            <ToolButton icon={FlashIcon} label="Flash" onClick={toggleFlash} active={flashOn} />
                         )}
-                        <ToolButton
-                            icon={GalleryIcon}
-                            label="Gallery"
-                            onClick={() => galleryRef.current?.click()}
-                        />
+                        <ToolButton icon={GalleryIcon} label="Gallery" onClick={() => galleryRef.current?.click()} />
 
                         {photo && products.length === 0 ? (
                             <button
@@ -920,51 +972,25 @@ export default function CameraScanner() {
                             </button>
                         )}
 
-                        <ToolButton
-                            icon={GalleryIcon}
-                            label="Sample"
-                            onClick={loadSample}
-                        />
-                        <ToolButton
-                            icon={HistoryIcon}
-                            label="History"
-                            onClick={() => ping("History coming soon")}
-                        />
+                        <ToolButton icon={GalleryIcon} label="Sample Shelf" onClick={loadSample} />
+                        <ToolButton icon={HistoryIcon} label="History" onClick={() => ping("History coming soon")} />
                     </div>
                 </div>
 
                 {toast && (
                     <div className="absolute inset-x-0 bottom-32 z-50 flex justify-center animate-fade-in">
-                        <span className="rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 backdrop-blur-md shadow-xl">
-                            {asText(toast)}
-                        </span>
+            <span className="rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 backdrop-blur-md shadow-xl">
+              {asText(toast)}
+            </span>
                     </div>
                 )}
 
                 {sheet === "detail" && selected && (
-                    <DetailSheet
-                        product={selected}
-                        lens={lens}
-                        unit={meta.unit}
-                        onClose={() => setSheet("none")}
-                    />
+                    <DetailSheet product={selected} lens={lens} unit={meta.unit} onClose={() => setSheet("none")} />
                 )}
 
-                <input
-                    ref={camRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={onPick}
-                />
-                <input
-                    ref={galleryRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={onPick}
-                />
+                <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPick} />
+                <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
             </main>
         </div>
     );
