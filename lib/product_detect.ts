@@ -124,7 +124,7 @@ const redis = new Redis({
 
 function generateCacheKey(base64Data: string): string {
     const hash = crypto.createHash("md5").update(base64Data).digest("hex");
-    return `product:cachev7:${hash}`; // Bumped version to invalidate old messy cache entries
+    return `product:cachev9:${hash}`; // Bumped version to invalidate old messy cache entries
 }
 
 /**
@@ -182,6 +182,10 @@ Rules:
         }
 
         const result: ProductIdentification = JSON.parse(responseText);
+
+        if (!result.productName) {
+            throw new Error("Mistral did not return a product name.");
+        }
 
         // Cache the clean result back to Upstash Redis
         await redis.set(cacheKey, result, { ex: CACHE_EXPIRATION_SECONDS });
