@@ -146,8 +146,8 @@ function iconTint(id: Lens) {
     return id === "health"
         ? "text-rose-500"
         : id === "allergens"
-          ? "text-amber-500"
-          : "text-emerald-400";
+            ? "text-amber-500"
+            : "text-emerald-400";
 }
 
 function parseAllergens(allergenStr: string | null): string[] {
@@ -186,7 +186,6 @@ function RatingChip({ tier }: { tier: Tier }) {
     );
 }
 
-// Custom style injection for the thin scrollbar track in the detail panel
 function ScrollbarStyles() {
     return (
         <style
@@ -212,12 +211,12 @@ function ScrollbarStyles() {
 }
 
 function ToolButton({
-    icon: Icon,
-    label,
-    onClick,
-    active,
-    dim,
-}: {
+                        icon: Icon,
+                        label,
+                        onClick,
+                        active,
+                        dim,
+                    }: {
     icon: IconType;
     label: string;
     onClick: () => void;
@@ -254,43 +253,14 @@ function ToolButton({
 }
 
 function Viewfinder() {
-    const corner = "absolute h-6 w-6 border-zinc-700";
-    return (
-        <div className="absolute inset-0 bg-zinc-950">
-            <div className="absolute inset-12 sm:inset-16 transition-all duration-300">
-                <span
-                    className={cx(
-                        corner,
-                        "left-0 top-0 rounded-tl-xl border-l-2 border-t-2",
-                    )}
-                />
-                <span
-                    className={cx(
-                        corner,
-                        "right-0 top-0 rounded-tr-xl border-r-2 border-t-2",
-                    )}
-                />
-                <span
-                    className={cx(
-                        corner,
-                        "bottom-0 left-0 rounded-bl-xl border-b-2 border-l-2",
-                    )}
-                />
-                <span
-                    className={cx(
-                        corner,
-                        "bottom-0 right-0 rounded-br-xl border-b-2 border-r-2",
-                    )}
-                />
-            </div>
-        </div>
-    );
+    // ✅ Little corner triangles removed completely
+    return <div className="absolute inset-0 bg-zinc-950" />;
 }
 
 function SheetShell({
-    children,
-    onClose,
-}: {
+                        children,
+                        onClose,
+                    }: {
     children: React.ReactNode;
     onClose: () => void;
 }) {
@@ -310,11 +280,11 @@ function SheetShell({
 }
 
 function DetailSheet({
-    product,
-    lens,
-    unit,
-    onClose,
-}: {
+                         product,
+                         lens,
+                         unit,
+                         onClose,
+                     }: {
     product: EnrichedProductResult;
     lens: Lens;
     unit: string;
@@ -691,7 +661,7 @@ export default function CameraScanner() {
     const bestEcoId =
         maxScore >= 0
             ? products.find((p) => p.environmentScore === maxScore)
-                  ?.detection_id
+                ?.detection_id
             : null;
 
     return (
@@ -760,7 +730,7 @@ export default function CameraScanner() {
                                     const cyPct =
                                         (p.y / imageDims.height) * 100 -
                                         ((p.height / imageDims.height) * 100) /
-                                            2;
+                                        2;
 
                                     const { color: mappedLensColor } =
                                         getDynamicValue(p, lens);
@@ -785,15 +755,15 @@ export default function CameraScanner() {
                                                 isSelected
                                                     ? "ring-2 ring-emerald-400 scale-125 z-30"
                                                     : isBest
-                                                      ? "scale-110 border-amber-400 z-20"
-                                                      : "hover:scale-125 hover:z-20 z-10",
+                                                        ? "scale-110 border-amber-400 z-20"
+                                                        : "hover:scale-125 hover:z-20 z-10",
                                             )}
                                         >
                                             <span
                                                 className="w-1.5 h-1.5 rounded-full transition-colors duration-300 block shrink-0"
                                                 style={{
                                                     backgroundColor:
-                                                        mappedLensColor,
+                                                    mappedLensColor,
                                                 }}
                                             />
 
@@ -845,8 +815,8 @@ export default function CameraScanner() {
                             {status === "live"
                                 ? "Point at a shelf, then tap to scan"
                                 : status === "init"
-                                  ? "Starting camera…"
-                                  : "Tap the shutter to take a photo"}
+                                    ? "Starting camera…"
+                                    : "Tap the shutter to take a photo"}
                         </p>
                         {status === "nolive" && (
                             <button
@@ -868,7 +838,8 @@ export default function CameraScanner() {
                 )}
 
                 <div className="absolute inset-x-0 top-0 z-20 pt-[max(env(safe-area-inset-top),14px)]">
-                    <div className="no-scrollbar flex gap-2 overflow-x-auto px-4">
+                    {/* ✅ Menu changed from overflow scroll to a centered layout arrangement */}
+                    <div className="flex flex-wrap gap-2 justify-center px-4">
                         {filteredLenses.map((l) => {
                             const active = l.id === lens;
                             const Icon = l.icon;
@@ -904,11 +875,6 @@ export default function CameraScanner() {
                             <span className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 border border-zinc-800/60 px-3 py-1 text-xs font-medium text-zinc-300 backdrop-blur-md">
                                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                                 {products.length} products found
-                            </span>
-                        )}
-                        {photo === "/schap-klein.png" && (
-                            <span className="rounded-full bg-zinc-800 border border-zinc-700 px-2.5 py-0.5 text-[11px] font-medium text-zinc-400">
-                                Sample Template
                             </span>
                         )}
                     </div>
@@ -970,7 +936,7 @@ export default function CameraScanner() {
                 </div>
 
                 {toast && (
-                    <div className="absolute inset-x-0 bottom-32 z-50 flex justify-center animate-fade-in">
+                    <div className="fixed sm:absolute inset-x-0 bottom-32 z-50 flex justify-center animate-fade-in pointer-events-none">
                         <span className="rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 backdrop-blur-md shadow-xl">
                             {toast}
                         </span>
