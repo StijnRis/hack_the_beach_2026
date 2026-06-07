@@ -84,6 +84,8 @@ export type Product = {
   productName: string | null;
   barcode: string | null;
   environmentScore: number;
+  nutriScore: number | null;
+  allergens: string | null;
 };
 
 /**

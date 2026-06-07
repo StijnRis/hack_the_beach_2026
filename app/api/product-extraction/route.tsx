@@ -1,7 +1,7 @@
+import { promises as fs } from "fs";
 import { NextResponse } from "next/server";
 import path from "path";
-import { promises as fs } from "fs";
-import { identifyProductAndBarcode } from "../../../lib/product_detect";
+import { identifyProduct } from "../../../lib/product_detect";
 
 export async function GET() {
     // 1. Resolve the absolute path to your test image
@@ -14,7 +14,7 @@ export async function GET() {
     const base64Data = imageBuffer.toString("base64");
 
     // 4. Send the raw base64 data to your updated function
-    const data = await identifyProductAndBarcode(base64Data, "image/jpeg");
+    const data = await identifyProduct(base64Data, "image/jpeg");
 
     if (!data) {
         return NextResponse.json(
