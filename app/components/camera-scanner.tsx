@@ -2,7 +2,6 @@
 
 import { ComponentType, useEffect, useRef, useState } from "react";
 import {
-  ChevronDownIcon,
   CloseIcon,
   FlashIcon,
   GalleryIcon,
@@ -509,7 +508,8 @@ export default function CameraScanner() {
                                 : "bg-zinc-900/80 text-zinc-300 border-zinc-800/80 backdrop-blur-md"
                         )}
                     >
-                      {active ? <ChevronDownIcon className="h-3.5 w-3.5" /> : <Icon className={cx("h-3.5 w-3.5", iconTint(l.id))} />}
+                      {/* Kept original original category icon even when item is selected/active */}
+                      <Icon className={cx("h-3.5 w-3.5", active ? "text-zinc-900" : iconTint(l.id))} />
                       {asText(l.label)}
                     </button>
                 );
