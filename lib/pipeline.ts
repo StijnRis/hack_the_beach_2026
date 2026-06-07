@@ -30,20 +30,19 @@ async function getScores(productName: string | null) {
 
     const startTime = Date.now();
 
-    // 1. First, try to find the absolute closest match (even if environmentScore is null)
+    // 1. Try to find the absolute closest match by name (even if environmentScore is null)
     const [exactRow] = await db
         .select({
             environmentScore: foodScores.ecoscoreScore,
             productName: foodScores.productName,
             nutriScore: foodScores.nutriscoreScore,
             allergens: foodScores.allergens,
-            categories: foodScores.categories,
         })
         .from(foodScores)
         .orderBy(sql`${foodScores.productName} <-> ${productName}`)
         .limit(1);
 
-    // If we found a match and it already has an environment score, we are good to go!
+    // If the closest match already has an environment score, return it immediately
     if (exactRow && exactRow.environmentScore !== null) {
         return {
             productName: exactRow.productName ?? null,
@@ -58,34 +57,24 @@ async function getScores(productName: string | null) {
     }
 
     // 2. FALLBACK: The closest match didn't have an environmentScore.
-    // We look for the closest item that DOES have a score, factoring in both name and category similarity.
-    const referenceCategories = exactRow?.categories || "";
-
+    // Find the next closest item by name that DOES have a score.
     const [fallbackRow] = await db
         .select({
             environmentScore: foodScores.ecoscoreScore,
             productName: foodScores.productName,
             nutriScore: foodScores.nutriscoreScore,
             allergens: foodScores.allergens,
-            categories: foodScores.categories,
         })
         .from(foodScores)
-        .where(isNotNull(foodScores.ecoscoreScore)) // Force it to find a row with a score
-        .orderBy(
-            // Order by name distance first, but add a weight for category similarity if categories exist
-            sql`${foodScores.productName} <-> ${productName} + (CASE WHEN ${referenceCategories} != '' THEN (${foodScores.categories} <-> ${referenceCategories}) * 0.5 ELSE 0 END)`,
-        )
+        .where(isNotNull(foodScores.ecoscoreScore)) // Guarantees we find a row with a score
+        .orderBy(sql`${foodScores.productName} <-> ${productName}`)
         .limit(1);
 
-    // Use fallback data for the environment score, but keep the original closest match's details if preferred.
-    // Here we return the fallback row's data to ensure consistency.
-    const finalRow = fallbackRow || exactRow;
-
     return {
-        productName: finalRow?.productName ?? null,
-        environmentScore: finalRow?.environmentScore ?? null,
-        nutriScore: finalRow?.nutriScore ?? null,
-        allergens: finalRow?.allergens ?? null,
+        productName: exactRow?.productName ?? null,
+        environmentScore: fallbackRow?.environmentScore ?? null,
+        nutriScore: fallbackRow?.nutriScore ?? null,
+        allergens: fallbackRow?.allergens ?? null,
         databaseLookupDurationMs: Date.now() - startTime,
         debug: {
             usedFallback: !!fallbackRow,
