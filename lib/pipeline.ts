@@ -11,6 +11,8 @@ export interface EnrichedProductResult extends RoboflowPrediction {
     nutriScore: number | null;
     allergens: string | null;
     databaseLookupDurationMs: number;
+    debug: object;
+    link: string | null;
 }
 
 async function getScores(productName: string | null) {
@@ -104,6 +106,10 @@ async function processPrediction(
             nutriScore: scores.nutriScore,
             allergens: scores.allergens,
             databaseLookupDurationMs: scores.databaseLookupDurationMs,
+            debug: {
+                croppedBase64: croppedBase64,
+            },
+            link: null,
         };
     } catch (error) {
         console.error(
@@ -118,6 +124,8 @@ async function processPrediction(
             nutriScore: null,
             allergens: null,
             databaseLookupDurationMs: 0,
+            debug: {},
+            link: null,
         };
     }
 }
