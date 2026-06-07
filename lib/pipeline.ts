@@ -2,7 +2,7 @@ import { isNotNull, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { processAndSplitImage, RoboflowPrediction } from "./box_detection";
 import { db } from "./db";
-import { identifyProductAndBarcode } from "./product_detect";
+import { identifyProduct } from "./product_detect";
 import { foodScores } from "./schema";
 
 export interface EnrichedProductResult extends RoboflowPrediction {
@@ -97,8 +97,8 @@ async function processPrediction(
         ).toString("base64");
 
         const productName =
-            (await identifyProductAndBarcode(croppedBase64, "image/jpeg"))
-                ?.productName ?? null;
+            (await identifyProduct(croppedBase64, "image/jpeg"))?.productName ??
+            null;
 
         const scores = await getScoresCached(productName);
 
@@ -110,9 +110,7 @@ async function processPrediction(
             nutriScore: scores.nutriScore,
             allergens: scores.allergens,
             databaseLookupDurationMs: scores.databaseLookupDurationMs,
-            debug: {
-                croppedBase64: croppedBase64,
-            },
+            debug: {},
             link: null,
         };
     } catch (error) {

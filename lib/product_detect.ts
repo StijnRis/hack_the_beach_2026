@@ -1,20 +1,33 @@
 import { Mistral } from "@mistralai/mistralai";
 import { Redis } from "@upstash/redis";
 import * as crypto from "crypto";
+import { z } from "zod";
 
-// Array of your API keys for selection
+// 1. Enhanced Zod schema with field descriptions to guide the small vision model
+const ProductNameResult = z.object({
+    productName: z
+        .string()
+        .describe(
+            "The exact, clean brand and product name in Dutch supermarket format. " +
+                "Example: 'AH Terra Sojakwark Ongezoet' instead of 'On Terra Soja Kwark'. " +
+                "Strip all price promotions, discounts, or 'X% Korting' text.",
+        ),
+    reasoning: z
+        .string()
+        .optional()
+        .describe("Brief internal text clues used to identify the product."),
+});
+
+// Create an inferred type for correct TypeScript return types
+export type ProductIdentification = z.infer<typeof ProductNameResult>;
+
 const MISTRAL_KEYS = [
     process.env.MISTRAL_API_KEY_1,
     process.env.MISTRAL_API_KEY_2,
 ].filter(Boolean) as string[];
 
-// Round-robin index counter for perfect rotation
 let currentKeyIndex = 0;
 
-/**
- * Helper function to pick the NEXT API key in strict sequential rotation
- * and initialize a fresh Mistral client instance.
- */
 function getMistralClient(): Mistral {
     if (MISTRAL_KEYS.length === 0) {
         throw new Error(
@@ -22,33 +35,23 @@ function getMistralClient(): Mistral {
         );
     }
 
-    // Smoothly cycle through keys using modulo arithmetic
     const apiKey = MISTRAL_KEYS[currentKeyIndex];
     currentKeyIndex = (currentKeyIndex + 1) % MISTRAL_KEYS.length;
 
     return new Mistral({ apiKey });
 }
 
-/**
- * Simple token-bucket style rate limiter queue to handle exactly 20 calls/sec max.
- * Queues up overflow tasks transparently.
- */
 class RateLimiter {
     private maxRequestsPerSecond = 20;
     private requestTimestamps: number[] = [];
     private queue: (() => void)[] = [];
     private processing = false;
 
-    /**
-     * Enqueues a task and returns a promise that resolves when the task is allowed to execute.
-     * Logs if the request was delayed due to rate limiting.
-     */
     async acquire(): Promise<void> {
         const startTime = Date.now();
         let executedImmediately = false;
 
         return new Promise<void>((resolve) => {
-            // Wrap resolve to detect if execution happens instantly vs later
             const wrappedResolve = () => {
                 executedImmediately = true;
                 resolve();
@@ -57,14 +60,12 @@ class RateLimiter {
             this.queue.push(wrappedResolve);
             this.processQueue();
 
-            // If it didn't resolve immediately during processQueue, it's being delayed
             if (!executedImmediately) {
                 const queuePosition = this.queue.length;
                 console.warn(
                     `[RateLimiter] Request delayed due to limit. Current queue depth: ${queuePosition}`,
                 );
 
-                // Override resolve to log the actual wait duration when it finally runs
                 const originalResolve = resolve;
                 resolve = () => {
                     const delayDuration = Date.now() - startTime;
@@ -82,7 +83,6 @@ class RateLimiter {
         this.processing = true;
 
         const now = Date.now();
-        // Clean out timestamps older than 1 second
         this.requestTimestamps = this.requestTimestamps.filter(
             (t) => now - t < 1000,
         );
@@ -94,13 +94,12 @@ class RateLimiter {
             const nextResolve = this.queue.shift();
             if (nextResolve) {
                 this.requestTimestamps.push(Date.now());
-                nextResolve(); // Execute the task
+                nextResolve();
             }
         }
 
         this.processing = false;
 
-        // If items are still queued up, schedule the next queue check
         if (this.queue.length > 0) {
             const oldestTimestamp = this.requestTimestamps[0] || now;
             const timeUntilNextSlot = Math.max(
@@ -112,49 +111,33 @@ class RateLimiter {
     }
 }
 
-// Global instance of our token bucket rate limiter
 const apiLimiter = new RateLimiter();
+const CACHE_EXPIRATION_SECONDS = 86400 * 10; // 10 days
 
-const CACHE_EXPIRATION_SECONDS = 86400 * 10; // 10 days in seconds
-
-// Initialize Upstash Redis
+// Initialize Upstash Redis safely via environment URL if possible
 const redis = new Redis({
-    url: "https://concrete-rattler-116172.upstash.io",
-    token: "gQAAAAAAAcXMAAIgcDE4NTIwMTNjZTQ0ZmE0MjhjYWJkOGQwMDExMDU2ZWIzMg",
+    url:
+        process.env.UPSTASH_REDIS_REST_URL ||
+        "https://concrete-rattler-116172.upstash.io",
+    token: process.env.REDIS_TOKEN!,
 });
 
-// Define the shape of the expected JSON output
-export interface ProductIdentificationResult {
-    productName: string;
-    barcode: string;
-}
-
-/**
- * Helper function to create a unique MD5 hash from the base64 string to use as a cache key.
- */
 function generateCacheKey(base64Data: string): string {
     const hash = crypto.createHash("md5").update(base64Data).digest("hex");
-    return `product:cachev2:${hash}`;
+    return `product:cachev7:${hash}`; // Bumped version to invalidate old messy cache entries
 }
 
 /**
- * Analyzes a base64 encoded image using Mistral and returns an object containing the product name and barcode.
- * Caches results remotely in Upstash Cloud Redis. Rate limits the underlying API to 20 req/sec max.
- * * @param base64Data - The raw base64 data string of the image (without the data URL prefix)
- * @param mimeType - The mime type (e.g., 'image/jpeg', 'image/png')
- * @returns A promise resolving to the identified product details, or null if an error occurs.
+ * Analyzes a base64 encoded image using Ministral and returns a clean product name.
+ * Grounded specifically for retail store checkout execution in the Netherlands.
  */
-export async function identifyProductAndBarcode(
+export async function identifyProduct(
     base64Data: string,
     mimeType: string,
-): Promise<ProductIdentificationResult | null> {
+): Promise<ProductIdentification | null> {
     try {
-        // 1. Generate a short, unique key for this image payload
         const cacheKey = generateCacheKey(base64Data);
-
-        // 2. Fetch from Upstash Cloud Cache (No rate limit applies here!)
-        const cachedResult =
-            await redis.get<ProductIdentificationResult>(cacheKey);
+        const cachedResult = await redis.get<ProductIdentification>(cacheKey);
 
         if (cachedResult) {
             return cachedResult;
@@ -162,53 +145,45 @@ export async function identifyProductAndBarcode(
 
         console.log("Using Mistral API...");
 
-        // 3. Rate limiting kicks in ONLY for Cache Misses
         await apiLimiter.acquire();
         const mistral = getMistralClient();
 
-        const prompt = `You are a precise product identification assistant. 
-Analyze the provided product image and extract the exact, full brand and product name.
+        // Grounding prompt targeting specific Dutch inventory catalog structures
+        const structuredPrompt = `You are a precise POS checkout scanner operating in Dutch supermarkets (e.g., Albert Heijn, Jumbo, Lidl, Plus, Aldi).
+Analyze the product image and output its exact real-world commercial name.
 
 Rules:
-- Include the brand, sub-brand, and specific model or variant if visible.
-- Do not guess. If the product name is not clearly identifiable or unknown, you MUST return null.
-- Output ONLY the requested JSON. Do not include conversational filler.`;
-        // Mistral expects base64 images formatted as Data URLs inside the message content array
+1. Fix common logo optical illusions: Recognize Albert Heijn's house label "AH Terra" instead of reading fragments as "On Terra", "Cn Terra", or "Tera".
+2. Match typical Dutch receipt or webshop taxonomy (e.g., "AH Terra Kokos Gurt", "Oatly Haverdrank Barista", "Coca-Cola Original Taste").
+3. Strictly normalize formatting: Clean up typos, remove discount markers like "35% Korting", "Voordeelverpakking", or structural layout phrases.
+4. Output nothing except the requested JSON schema fields.`;
+
         const imageUrl = `data:${mimeType};base64,${base64Data}`;
 
-        const response = await mistral.chat.complete({
+        const response = await mistral.chat.parse({
             model: "ministral-3b-2512",
             messages: [
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: prompt },
+                        { type: "text", text: structuredPrompt },
                         { type: "image_url", imageUrl: { url: imageUrl } },
                     ],
                 },
             ],
-            responseFormat: {
-                type: "json_schema",
-                jsonSchema: {
-                    name: "ProductIdentificationResult",
-                    schemaDefinition: {
-                        productName:
-                            "The full brand and product name identified in the image.",
-                    },
-                },
-            },
+            responseFormat: ProductNameResult,
+            temperature: 0, // Enforces deterministic extraction rather than creative guessing
         });
 
-        // Mistral chat completion choices can be strings or undefined
         const responseText = response.choices?.[0]?.message?.content;
 
         if (!responseText || typeof responseText !== "string") {
             throw new Error("Empty or invalid response received from Mistral.");
         }
 
-        const result: ProductIdentificationResult = JSON.parse(responseText);
+        const result: ProductIdentification = JSON.parse(responseText);
 
-        // Cache the newly resolved result back to Redis
+        // Cache the clean result back to Upstash Redis
         await redis.set(cacheKey, result, { ex: CACHE_EXPIRATION_SECONDS });
 
         return result;
