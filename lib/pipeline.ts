@@ -5,50 +5,43 @@ import { db } from "./db";
 import { identifyProductAndBarcode } from "./product_detect"; // Adjust import path
 import { foodScores } from "./schema";
 
-export interface EnrichedProductResult extends Omit<
-    RoboflowPrediction,
-    "croppedBase64"
-> {
+export interface EnrichedProductResult extends RoboflowPrediction {
     productName: string | null;
-    barcode: string | null;
-    environmentScore: number;
+    environmentScore: number | null;
+    nutriScore: number | null;
+    allergens: string | null;
+    databaseLookupDurationMs: number;
 }
 
-// Neutral fallback when a product can't be matched in the database.
-const DEFAULT_ENVIRONMENT_SCORE = 50;
+async function getScores(productName: string | null) {
+    if (!productName)
+        return {
+            environmentScore: null,
+            nutriScore: null,
+            allergens: null,
+            databaseLookupDurationMs: 0,
+        };
 
-/**
- * Looks up the eco-score for a product name in the `food_scores` table.
- *
- * Uses Postgres trigram matching (pg_trgm) to rank rows by how closely
- * their name matches. Only rows that actually have an eco-score are
- * considered, and we take the single best match with no fixed threshold —
- * so we always get the closest scored product. Falls back to a neutral
- * value when there's no name or the table has no scored rows.
- *
- * We order by the `<->` distance operator (which equals
- * `1 - similarity(...)`) instead of `similarity(...) DESC` because `<->`
- * can be served by a KNN GiST trigram index, turning a full-table scan
- * (~2.3s over 4.2M rows) into an index scan (~65ms). The ordering — and
- * therefore the chosen match — is identical. Requires:
- *
- *   CREATE INDEX food_scores_name_trgm_gist
- *     ON food_scores USING gist (product_name gist_trgm_ops)
- *     WHERE ecoscore_score IS NOT NULL;
- */
-async function getEnvironmentScore(
-    productName: string | null,
-): Promise<number> {
-    if (!productName) return DEFAULT_ENVIRONMENT_SCORE;
-
+    const startTime = Date.now();
     const [row] = await db
-        .select({ ecoscoreScore: foodScores.ecoscoreScore })
+        .select({
+            environmentScore: foodScores.ecoscoreScore,
+            productName: foodScores.productName,
+            nutriScore: foodScores.nutriscoreScore,
+            allergens: foodScores.allergens,
+        })
         .from(foodScores)
         .where(isNotNull(foodScores.ecoscoreScore))
         .orderBy(sql`${foodScores.productName} <-> ${productName}`)
         .limit(1);
+    const duration = Date.now() - startTime;
 
-    return row?.ecoscoreScore ?? DEFAULT_ENVIRONMENT_SCORE;
+    return {
+        environmentScore: row?.environmentScore ?? null,
+        nutriScore: row?.nutriScore ?? null,
+        allergens: row?.allergens ?? null,
+        databaseLookupDurationMs: duration,
+    };
 }
 
 /**
@@ -61,11 +54,10 @@ async function getEnvironmentScore(
  * 6. Combines and returns metadata without base64 data.
  */
 export async function runProductDetectionPipeline(
-    imageBuffer: Buffer
+    imageBuffer: Buffer,
 ): Promise<EnrichedProductResult[]> {
-    
     // 1. Fetch raw predictions from Roboflow
-    // Note: If processAndSplitImage originally relied on the local file, 
+    // Note: If processAndSplitImage originally relied on the local file,
     // you may need to update its parameters to accept this buffer as well.
     const predictions = await processAndSplitImage(imageBuffer);
 
@@ -95,10 +87,10 @@ export async function runProductDetectionPipeline(
             const productName = aiResult?.productName ?? null;
 
             // 4. Look up the real eco-score for this product in the database
-            const environmentScore = await getEnvironmentScore(productName);
+            const scores = await getScores(productName);
 
             // 5. Return merged metadata, dropping the base64 string
-            return {
+            const item: EnrichedProductResult = {
                 x: prediction.x,
                 y: prediction.y,
                 width: prediction.width,
@@ -108,9 +100,12 @@ export async function runProductDetectionPipeline(
                 class_id: prediction.class_id,
                 detection_id: prediction.detection_id,
                 productName,
-                barcode: aiResult?.barcode ?? null,
-                environmentScore,
+                environmentScore: scores.environmentScore,
+                nutriScore: scores.nutriScore,
+                allergens: scores.allergens,
+                databaseLookupDurationMs: scores.databaseLookupDurationMs,
             };
+            return item;
         } catch (error) {
             console.error(
                 `Failed processing prediction ${prediction.detection_id}:`,
@@ -120,8 +115,10 @@ export async function runProductDetectionPipeline(
             return {
                 ...prediction,
                 productName: null,
-                barcode: null,
-                environmentScore: DEFAULT_ENVIRONMENT_SCORE,
+                environmentScore: null,
+                nutriScore: null,
+                allergens: null,
+                databaseLookupDurationMs: 0,
             };
         }
     });

@@ -157,20 +157,15 @@ export async function identifyProductAndBarcode(
             await redis.get<ProductIdentificationResult>(cacheKey);
 
         if (cachedResult) {
-            console.log("Serving product details from Upstash cloud cache...");
             return cachedResult;
         }
 
         console.log(
-            "Cache miss. Waiting for a rate-limit slot before calling Mistral API...",
+            "Using Mistral API...",
         );
 
         // 3. Rate limiting kicks in ONLY for Cache Misses
         await apiLimiter.acquire();
-
-        console.log(
-            "Slot acquired! Instantiating Mistral client with sequentially rotated API key...",
-        );
         const mistral = getMistralClient();
 
         const prompt =
