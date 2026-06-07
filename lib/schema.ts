@@ -43,4 +43,5 @@ export const foodScores = pgTable("food_scores", {
     nutriscoreScore: integer("nutriscore_score"),
     allergens: text("allergens"),
     co2TotalKg: doublePrecision("co2_total_kg"),
+    categories: text("categories"), // Not loaded from CSV, but we can use it for smarter fallback logic in getScores()
 });
