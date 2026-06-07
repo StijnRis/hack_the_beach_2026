@@ -1,4 +1,4 @@
-import { isNotNull, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import sharp from "sharp";
 import { processAndSplitImage, RoboflowPrediction } from "./box_detection"; // Adjust import path
 import { db } from "./db";
@@ -14,27 +14,29 @@ export interface EnrichedProductResult extends Omit<
     environmentScore: number;
 }
 
-// Neutral fallback when a product can't be matched in the database.
+// Neutral fallback when there's no product name to look up at all.
 const DEFAULT_ENVIRONMENT_SCORE = 50;
+
+// Score assigned when the matched product has no eco-score in the table.
+const UNSCORED_ENVIRONMENT_SCORE = 30;
 
 /**
  * Looks up the eco-score for a product name in the `food_scores` table.
  *
- * Uses Postgres trigram matching (pg_trgm) to rank rows by how closely
- * their name matches. Only rows that actually have an eco-score are
- * considered, and we take the single best match with no fixed threshold —
- * so we always get the closest scored product. Falls back to a neutral
- * value when there's no name or the table has no scored rows.
+ * Uses Postgres trigram matching (pg_trgm) to find the single closest
+ * product by name, regardless of whether it has an eco-score. If that
+ * product has no eco-score we return a fixed fallback; if there's no name
+ * to look up at all we return a neutral default.
  *
  * We order by the `<->` distance operator (which equals
  * `1 - similarity(...)`) instead of `similarity(...) DESC` because `<->`
  * can be served by a KNN GiST trigram index, turning a full-table scan
  * (~2.3s over 4.2M rows) into an index scan (~65ms). The ordering — and
- * therefore the chosen match — is identical. Requires:
+ * therefore the chosen match — is identical. Because we now consider every
+ * row (not just scored ones), the index must NOT be partial:
  *
  *   CREATE INDEX food_scores_name_trgm_gist
- *     ON food_scores USING gist (product_name gist_trgm_ops)
- *     WHERE ecoscore_score IS NOT NULL;
+ *     ON food_scores USING gist (product_name gist_trgm_ops);
  */
 async function getEnvironmentScore(
     productName: string | null,
@@ -44,11 +46,10 @@ async function getEnvironmentScore(
     const [row] = await db
         .select({ ecoscoreScore: foodScores.ecoscoreScore })
         .from(foodScores)
-        .where(isNotNull(foodScores.ecoscoreScore))
         .orderBy(sql`${foodScores.productName} <-> ${productName}`)
         .limit(1);
 
-    return row?.ecoscoreScore ?? DEFAULT_ENVIRONMENT_SCORE;
+    return row?.ecoscoreScore ?? UNSCORED_ENVIRONMENT_SCORE;
 }
 
 /**
