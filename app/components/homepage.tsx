@@ -6,7 +6,7 @@ export default function HomePage(): React.JSX.Element {
         <div style={styles.container}>
             {/* Header */}
             <header style={styles.header}>
-                <div style={styles.logo}>SustainScan</div>
+                <div style={styles.logo}>ShelfWise</div>
                 <nav style={styles.navLinks}>
                     <a href="#mission" style={styles.navLink}>Our Mission</a>
                     <a href="#features" style={styles.navLink}>How It Works</a>
@@ -74,7 +74,7 @@ export default function HomePage(): React.JSX.Element {
 
             {/* Footer */}
             <footer style={styles.footer}>
-                <p>© {new Date().getFullYear()} SustainScan. Driving transparent consumerism through technology.</p>
+                <p>© {new Date().getFullYear()} ShelfWise. Driving transparent consumerism through technology.</p>
             </footer>
         </div>
     );
@@ -137,7 +137,7 @@ const styles: { [key: string]: React.CSSProperties } = {
         color: '#ffffff',
     },
     gradientText: {
-        background: 'linear-gradient(to right, #34d399, #60a5fa)', // Eco-friendly green to clear tech blue
+        background: 'linear-gradient(to right, #34d399, #60a5fa)',
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent',
     },
@@ -154,7 +154,7 @@ const styles: { [key: string]: React.CSSProperties } = {
         alignItems: 'center',
     },
     primaryBtn: {
-        backgroundColor: '#34d399', // Swapped button accent color to dynamic sustainability green
+        backgroundColor: '#34d399',
         color: '#0b0f19',
         padding: '0.75rem 1.5rem',
         borderRadius: '0.5rem',

@@ -7,7 +7,9 @@
     "dev:https": "next dev --experimental-https -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:setup": "node db/setup.mjs",
+    "db:rebuild": "sh db/rebuild.sh"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
