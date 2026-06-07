@@ -14,6 +14,7 @@ import {
   TagIcon,
 } from "./icons";
 
+
 export type Lens = "sustainability" | "health" | "price" | "allergens";
 export type Tier = "good" | "mid" | "bad";
 
@@ -64,7 +65,7 @@ export const TIER_STYLE: Record<
     dot: "#3f7d4e",
     chipBg: "#e3efe2",
     chipText: "#2f6b3e",
-    label: "Great",
+    label: "Safe",
   },
   mid: {
     dot: "#c8862a",
@@ -76,7 +77,7 @@ export const TIER_STYLE: Record<
     dot: "#b5483d",
     chipBg: "#f4ded9",
     chipText: "#8e2f26",
-    label: "Poor",
+    label: "Warning",
   },
 };
 
@@ -90,7 +91,9 @@ export function tierOf(p: EnrichedProductResult, lens: Lens): Tier {
   }
 
   if (lens === "allergens") {
-    return score > 40 ? "good" : "bad";
+    const rawAllergens = p.allergens ? asText(p.allergens).trim() : "";
+    const hasAllergens = rawAllergens && rawAllergens !== "null" && rawAllergens.toLowerCase() !== "none";
+    return hasAllergens ? "bad" : "good";
   }
 
   const derivedScore = lens === "health"
@@ -106,7 +109,11 @@ export function valueText(p: EnrichedProductResult, lens: Lens): string {
   const score = p.environmentScore;
 
   if (lens === "sustainability") return `${score}/100`;
-  if (lens === "allergens") return score > 40 ? "Safe" : "Warning";
+  if (lens === "allergens") {
+    const rawAllergens = p.allergens ? asText(p.allergens).trim() : "";
+    const hasAllergens = rawAllergens && rawAllergens !== "null" && rawAllergens.toLowerCase() !== "none";
+    return hasAllergens ? "Allergens Detected" : "Clear";
+  }
 
   if (lens === "health") {
     return `${Math.min(100, Math.max(0, score + 10))}/100`;
@@ -145,6 +152,21 @@ function iconTint(id: Lens) {
           : "text-emerald-400";
 }
 
+function parseAllergens(allergenStr: string | null): string[] {
+  if (!allergenStr || allergenStr === "null" || allergenStr.toLowerCase() === "none") return [];
+
+  return allergenStr
+      .split(/[,;]+/)
+      .map((item) => {
+        let cleaned = item.trim();
+        if (cleaned.includes(":")) {
+          cleaned = cleaned.split(":")[1];
+        }
+        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+      })
+      .filter((item) => item.length > 0);
+}
+
 // ============================================================================
 // UI SUB-COMPONENTS
 // ============================================================================
@@ -158,6 +180,27 @@ function RatingChip({ tier }: { tier: Tier }) {
       >
       {asText(s.label)}
     </span>
+  );
+}
+
+// Custom style injection for the thin scrollbar track in the detail panel
+function ScrollbarStyles() {
+  return (
+      <style dangerouslySetInnerHTML={{__html: `
+      .allergen-scroll::-webkit-scrollbar {
+        width: 4px;
+      }
+      .allergen-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .allergen-scroll::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+        border-radius: 9999px;
+      }
+      .allergen-scroll::-webkit-scrollbar-thumb:hover {
+        background: #52525b;
+      }
+    `}} />
   );
 }
 
@@ -188,7 +231,7 @@ function ToolButton({
       >
         <Icon className="h-[20px] w-[20px]" />
       </span>
-        <span className={cx("text-[11px] font-medium tracking-wide text-zinc-400 text-center line-clamp-2 leading-tight", dim && "opacity-30")}>
+        <span className={cx("text-[11px] font-medium tracking-wide text-zinc-400 text-center line-clamp-2 leading-tight h-8 flex items-start justify-center", dim && "opacity-30")}>
         {label}
       </span>
       </button>
@@ -224,20 +267,22 @@ function SheetShell({ children, onClose }: { children: React.ReactNode; onClose:
 function DetailSheet({ product, lens, unit, onClose }: { product: EnrichedProductResult; lens: Lens; unit: string; onClose: () => void }) {
   const t = tierOf(product, lens);
   const { score, label: lensValueText, hasBar, color: currentLensColor } = getDynamicValue(product, lens);
+  const parsedAllergensList = parseAllergens(product.allergens);
 
   return (
       <SheetShell onClose={onClose}>
+        <ScrollbarStyles />
         <div className="px-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-lg font-bold tracking-tight text-zinc-100 truncate">
                 {product.productName && asText(product.productName) !== "null" ? asText(product.productName) : "Detected Object"}
               </p>
-               <p className="text-xs font-medium text-zinc-400 mt-0.5">
-              {product.link ? <a href={product.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">
-                View Details
-              </a> : "No link available"}
-            </p>
+              <p className="text-xs font-medium text-zinc-400 mt-0.5">
+                {product.link ? <a href={product.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">
+                  View Details
+                </a> : "No link available"}
+              </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <RatingChip tier={t} />
@@ -249,18 +294,42 @@ function DetailSheet({ product, lens, unit, onClose }: { product: EnrichedProduc
           <div className="mt-4 rounded-xl bg-zinc-950 border border-zinc-800/80 p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">{asText(unit)}</span>
-              <span className="text-sm font-bold transition-colors duration-300" style={{ color: currentLensColor }}>
-              {asText(lensValueText)}
-            </span>
+              {lens !== "allergens" && (
+                  <span className="text-sm font-bold transition-colors duration-300" style={{ color: currentLensColor }}>
+                  {asText(lensValueText)}
+                </span>
+              )}
             </div>
-            {hasBar && (
+
+            {lens === "allergens" ? (
+                <div className="mt-2">
+                  {parsedAllergensList.length > 0 ? (
+                      <div className="allergen-scroll max-h-28 overflow-y-auto pr-1 mt-1 flex flex-wrap gap-1.5">
+                        {parsedAllergensList.map((allergen, idx) => (
+                            <span
+                                key={idx}
+                                className="bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1"
+                            >
+                        <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+                              {allergen}
+                      </span>
+                        ))}
+                      </div>
+                  ) : (
+                      <p className="text-xs font-medium text-emerald-400 flex items-center gap-1 mt-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        No major allergen flags found.
+                      </p>
+                  )}
+                </div>
+            ) : hasBar ? (
                 <div className="mt-3 h-2 rounded-full bg-zinc-800">
                   <div
                       className="h-full rounded-full transition-all duration-500 ease-out"
                       style={{ width: `${score}%`, background: currentLensColor }}
                   />
                 </div>
-            )}
+            ) : null}
           </div>
         </div>
       </SheetShell>
@@ -322,7 +391,7 @@ function getDynamicValue(product: EnrichedProductResult, lens: Lens): { score: n
     const color = hasAllergens ? "rgba(239, 68, 68, 0.95)" : "rgba(52, 211, 153, 0.95)";
     return {
       score: 0,
-      label: hasAllergens ? value : "None Detected",
+      label: hasAllergens ? "Contains Allergens" : "None Detected",
       hasBar: false,
       color
     };
@@ -406,7 +475,7 @@ export default function CameraScanner() {
   };
 
   const getBlobFromPhoto = async (photoUrl: string): Promise<Blob> => {
-    if (photoUrl.startsWith("blob:") || photoUrl.startsWith("data:")) {
+    if (photoUrl.startsWith("blob:")) {
       const res = await fetch(photoUrl);
       return await res.blob();
     }
@@ -452,32 +521,22 @@ export default function CameraScanner() {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "Pipeline processing error.");
 
-      const parsedProducts: ExtendedProduct[] = (result.data || [])
-          .map((item: any) => {
-            const rawName = item.productName === "null" ? null : asText(item.productName);
-            return {
-              x: Number(item.x),
-              y: Number(item.y),
-              width: Number(item.width),
-              height: Number(item.height),
-              confidence: Number(item.confidence),
-              class: asText(item.class),
-              class_id: Number(item.class_id),
-              detection_id: asText(item.detection_id),
-              productName: rawName,
-              barcode: item.barcode === "null" ? null : asText(item.barcode),
-              environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
-              nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
-              allergens: item.allergens !== undefined ? asText(item.allergens) : null,
-            };
-          })
-          // 🟢 Bulletproof Filter: Removes any variations of null, blank entries, or literal "Detected Object" entries.
-          .filter((product) => {
-            if (!product.productName) return false;
-            const normalized = product.productName.trim().toLowerCase();
-            return normalized !== "detected object" && normalized !== "null" && normalized !== "";
-          });
-
+      const parsedProducts: EnrichedProductResult[] = (result.data || []).map((item: any) => ({
+        x: Number(item.x),
+        y: Number(item.y),
+        width: Number(item.width),
+        height: Number(item.height),
+        confidence: Number(item.confidence),
+        class: asText(item.class),
+        class_id: Number(item.class_id),
+        detection_id: asText(item.detection_id),
+        productName: item.productName === "null" ? null : asText(item.productName),
+        barcode: item.barcode === "null" ? null : asText(item.barcode),
+        environmentScore: typeof item.environmentScore === "number" ? item.environmentScore : 50,
+        nutriScore: item.nutriScore !== undefined ? item.nutriScore : null,
+        allergens: item.allergens !== undefined ? asText(item.allergens) : null,
+        link: item.link !== undefined ? asText(item.link) : null,
+      }));
       setProducts(parsedProducts);
       ping(`Success! Loaded ${parsedProducts.length} items.`);
     } catch (err: any) {
@@ -713,7 +772,7 @@ export default function CameraScanner() {
           </div>
 
           <div className="absolute inset-x-0 bottom-0 z-20 px-6 pt-3 pb-[max(env(safe-area-inset-bottom),20px)]">
-            <div className="flex items-center justify-between w-full">
+            <div className="flex items-center justify-between">
               {photo ? (
                   <ToolButton icon={RotateIcon} label="Retake" onClick={retake} />
               ) : (
@@ -741,7 +800,7 @@ export default function CameraScanner() {
                   </button>
               )}
 
-              <ToolButton icon={GalleryIcon} label="Sample" onClick={loadSample} />
+              <ToolButton icon={GalleryIcon} label="Sample Shelf" onClick={loadSample} />
               <ToolButton icon={HistoryIcon} label="History" onClick={() => ping("History coming soon")} />
             </div>
           </div>
