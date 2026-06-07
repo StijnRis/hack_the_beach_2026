@@ -6,7 +6,8 @@ import { identifyProductAndBarcode } from "./product_detect";
 import { foodScores } from "./schema";
 
 export interface EnrichedProductResult extends RoboflowPrediction {
-    productName: string | null;
+    detectedProductName: string | null;
+    dbProductName: string | null;
     environmentScore: number | null;
     nutriScore: number | null;
     allergens: string | null;
@@ -18,6 +19,7 @@ export interface EnrichedProductResult extends RoboflowPrediction {
 async function getScores(productName: string | null) {
     if (!productName) {
         return {
+            productName: null,
             environmentScore: null,
             nutriScore: null,
             allergens: null,
@@ -40,6 +42,7 @@ async function getScores(productName: string | null) {
         .limit(1);
 
     return {
+        productName: row?.productName ?? null,
         environmentScore: row?.environmentScore ?? null,
         nutriScore: row?.nutriScore ?? null,
         allergens: row?.allergens ?? null,
@@ -101,7 +104,8 @@ async function processPrediction(
 
         return {
             ...prediction,
-            productName,
+            detectedProductName: productName,
+            dbProductName: scores.productName,
             environmentScore: scores.environmentScore,
             nutriScore: scores.nutriScore,
             allergens: scores.allergens,
@@ -119,7 +123,8 @@ async function processPrediction(
 
         return {
             ...prediction,
-            productName: null,
+            detectedProductName: null,
+            dbProductName: null,
             environmentScore: null,
             nutriScore: null,
             allergens: null,

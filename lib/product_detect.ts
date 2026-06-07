@@ -160,17 +160,19 @@ export async function identifyProductAndBarcode(
             return cachedResult;
         }
 
-        console.log(
-            "Using Mistral API...",
-        );
+        console.log("Using Mistral API...");
 
         // 3. Rate limiting kicks in ONLY for Cache Misses
         await apiLimiter.acquire();
         const mistral = getMistralClient();
 
-        const prompt =
-            "Analyze this product image. Identify the exact and full product name. If unknown, return null.";
+        const prompt = `You are a precise product identification assistant. 
+Analyze the provided product image and extract the exact, full brand and product name.
 
+Rules:
+- Include the brand, sub-brand, and specific model or variant if visible.
+- Do not guess. If the product name is not clearly identifiable or unknown, you MUST return null.
+- Output ONLY the requested JSON. Do not include conversational filler.`;
         // Mistral expects base64 images formatted as Data URLs inside the message content array
         const imageUrl = `data:${mimeType};base64,${base64Data}`;
 
@@ -190,11 +192,8 @@ export async function identifyProductAndBarcode(
                 jsonSchema: {
                     name: "ProductIdentificationResult",
                     schemaDefinition: {
-                        productName: {
-                            type: "string",
-                            description:
-                                "The full brand and product name identified in the image.",
-                        },
+                        productName:
+                            "The full brand and product name identified in the image.",
                     },
                 },
             },
