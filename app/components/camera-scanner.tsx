@@ -81,7 +81,7 @@ export const TIER_STYLE: Record<
 };
 
 export function tierOf(p: EnrichedProductResult, lens: Lens): Tier {
-    const score = p.environmentScore;
+    const score = p.environmentScore|| 0;
 
     if (lens === "sustainability") {
         if (score >= 60) return "good";
@@ -109,7 +109,7 @@ export function tierOf(p: EnrichedProductResult, lens: Lens): Tier {
 }
 
 export function valueText(p: EnrichedProductResult, lens: Lens): string {
-    const score = p.environmentScore;
+    const score = p.environmentScore || 0;
 
     if (lens === "sustainability") return `${score}/100`;
     if (lens === "allergens") {
